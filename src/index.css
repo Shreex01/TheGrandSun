@@ -1,0 +1,50 @@
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #17151b;
+  background: #fff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-weight: 400;
+
+  --ink: #17151b;
+  --muted: #686570;
+  --purple: #673ab7;
+  --purple-dark: #512da8;
+  --cream: #fff;
+  --line: #e7e5eb;
+  --green: #673ab7;
+  --serif: Arial, Helvetica, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { min-width: 360px; scroll-behavior: smooth; }
+
+body { margin: 0; min-width: 360px; min-height: 100vh; }
+
+body, button, input { font-family: Arial, Helvetica, sans-serif; }
+
+button, a { -webkit-tap-highlight-color: transparent; }
+
+button { color: inherit; }
+
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 2px solid #673ab7;
+  outline-offset: 3px;
+}
+
+button:disabled { cursor: not-allowed; }
+
+::selection { color: #fff; background: #673ab7; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
