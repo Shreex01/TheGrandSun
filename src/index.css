@@ -15,7 +15,7 @@
   --cream: #fff;
   --line: #e7e5eb;
   --green: #673ab7;
-  --serif: Arial, Helvetica, sans-serif;
+  --serif: Georgia, 'Times New Roman', serif;
 }
 
 * { box-sizing: border-box; }
