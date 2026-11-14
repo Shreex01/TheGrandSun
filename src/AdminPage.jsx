@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Notice from './components/Notice.jsx'
 import { supabase } from './lib/supabase.js'
 import { isValidGoogleDriveUrl, isValidProductId } from './lib/catalog.js'
+import { friendlyMessage } from './lib/messages.js'
 
 const blankDraft = (type) => ({
   id: '',
@@ -100,7 +102,7 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
       ])
       return true
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to load the product catalog.')
+      setError(friendlyMessage(requestError, 'admin'))
       return false
     } finally {
       setLoading(false)
@@ -152,7 +154,7 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
       await onCatalogChanged()
       setMessage(`“${product.title}” is no longer listed. Existing purchasers keep access.`)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to remove this product.')
+      setError(friendlyMessage(requestError, 'admin'))
     } finally {
       setBusy(false)
     }
@@ -286,7 +288,7 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
       setDraft(null)
       setMessage(wasExisting ? 'Product updated.' : 'Product added to the catalog.')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to save this product.')
+      setError(friendlyMessage(requestError, 'admin'))
     } finally {
       setBusy(false)
     }
@@ -329,8 +331,8 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
               </button>
             ))}
           </div>
-          {error && <p className="auth-feedback auth-error" role="alert">{error}</p>}
-          {message && <p className="auth-feedback auth-success" role="status">{message}</p>}
+          {error && <Notice variant="error" title="That didn’t save" onDismiss={() => setError('')}>{error}</Notice>}
+          {message && <Notice variant="success" title="All set" onDismiss={() => setMessage('')}>{message}</Notice>}
           {loading ? <p className="admin-empty">Loading catalog…</p>
             : visibleProducts.length ? (
               <div className="admin-product-list">
@@ -354,10 +356,10 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
           <p className="eyebrow">DELIVERY CHECKLIST</p>
           <h2>Ready for customers?</h2>
           <ul>
-            <li>Publish the product to show it in the storefront.</li>
-            <li>E-books need a PDF uploaded to private Supabase Storage.</li>
-            <li>Published courses need lesson titles and a Google Drive link for each recording.</li>
-            <li>Purchases are not enabled until verified payment fulfillment is connected.</li>
+            <li>Publish a product when you’re ready for it to appear in the storefront.</li>
+            <li>E-books need their PDF uploaded to the secure library.</li>
+            <li>Courses need a lesson title and a Google Drive link for each recording.</li>
+            <li>Purchases go live once payment verification is connected.</li>
           </ul>
           <p>Google Drive links can be forwarded by recipients. For stricter control, configure Drive access for named accounts.</p>
         </aside>
@@ -402,14 +404,14 @@ function AdminPage({ email, onBack, onSignOut, onCatalogChanged }) {
                   </fieldset>
                 : <label>E-book PDF
                     <input type="file" accept="application/pdf,.pdf" onChange={(event) => setDraft({ ...draft, file: event.target.files?.[0] ?? null })} />
-                    <small>{draft.storagePath ? `Current file: ${draft.storagePath}. Choose a PDF to replace it.` : 'PDF only, up to 100 MB. Stored in the private ebooks bucket.'}</small>
+                    <small>{draft.storagePath ? `Current file: ${draft.storagePath}. Choose a PDF to replace it.` : 'PDF only, up to 100 MB. Stored securely and shown only to purchasers.'}</small>
                   </label>}
               <label className="admin-publish-toggle"><input type="checkbox" checked={draft.published} onChange={(event) => setDraft({ ...draft, published: event.target.checked })} /> Published in the storefront</label>
               <div className="admin-editor-actions">
                 <button type="button" className="button button-outline" onClick={() => setDraft(null)} disabled={busy}>Cancel</button>
                 <button type="submit" className="button button-dark" disabled={busy}>{busy ? 'Saving…' : 'Save product'}</button>
               </div>
-              {error && <p className="auth-feedback auth-error" role="alert">{error}</p>}
+              {error && <Notice variant="error" title="That didn’t save" onDismiss={() => setError('')}>{error}</Notice>}
             </form>
           </section>
         </div>

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import './polish.css'
 import AdminPage from './AdminPage.jsx'
 import AuthPage from './AuthPage.jsx'
+import Notice from './components/Notice.jsx'
 import { supabase } from './lib/supabase.js'
 import { mapCatalogRows } from './lib/catalog.js'
+import { friendlyMessage } from './lib/messages.js'
 
 const courses = [
   {
@@ -310,6 +313,7 @@ function App() {
   const [enrollmentsError, setEnrollmentsError] = useState('')
   const [ebookPurchasesLoading, setEbookPurchasesLoading] = useState(false)
   const [ebookPurchasesError, setEbookPurchasesError] = useState('')
+  const [libraryRefreshKey, setLibraryRefreshKey] = useState(0)
   const [accountError, setAccountError] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All products')
@@ -375,7 +379,7 @@ function App() {
     if (requestId !== catalogRequestId.current) return
     if (courseResult.error || ebookResult.error) {
       const error = courseResult.error ?? ebookResult.error
-      setCatalogError(error.message)
+      setCatalogError(friendlyMessage(error, 'catalog'))
       throw error
     }
     setCatalogError('')
@@ -430,12 +434,12 @@ function App() {
     let active = true
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return
-      if (error) setAccountError(error.message)
+      if (error) setAccountError(friendlyMessage(error, 'account'))
       setSession(data.session)
       setAuthReady(true)
     }).catch((error) => {
       if (!active) return
-      setAccountError(error instanceof Error ? error.message : 'Unable to restore your student session.')
+      setAccountError(friendlyMessage(error, 'account'))
       setAuthReady(true)
     })
 
@@ -461,12 +465,12 @@ function App() {
       if (!active) return
       setAdminRole(!error && data === true)
       setAdminCheckUserId(session.user.id)
-      if (error) setAccountError(`Unable to verify administrator access: ${error.message}`)
+      if (error) setAccountError(friendlyMessage(error, 'admin'))
     }).catch((error) => {
       if (!active) return
       setAdminRole(false)
       setAdminCheckUserId(session.user.id)
-      setAccountError(error instanceof Error ? `Unable to verify administrator access: ${error.message}` : 'Unable to verify administrator access.')
+      setAccountError(friendlyMessage(error, 'admin'))
     })
 
     return () => { active = false }
@@ -495,13 +499,13 @@ function App() {
         if (!active) return
         if (enrollmentResult.error) {
           setOwned([])
-          setEnrollmentsError(enrollmentResult.error.message)
+          setEnrollmentsError(friendlyMessage(enrollmentResult.error, 'library'))
         } else {
           setOwned(enrollmentResult.data.map((enrollment) => enrollment.course_id))
         }
         if (ebookResult.error) {
           setOwnedEbookIds([])
-          setEbookPurchasesError(ebookResult.error.message)
+          setEbookPurchasesError(friendlyMessage(ebookResult.error, 'library'))
         } else {
           setOwnedEbookIds(ebookResult.data.map((purchase) => purchase.ebook_id))
         }
@@ -514,14 +518,14 @@ function App() {
         setOwned([])
         setOwnedEbookIds([])
         setEnrollmentUserId(session.user.id)
-        setEnrollmentsError(error instanceof Error ? error.message : 'Unable to load your enrollments.')
+        setEnrollmentsError(friendlyMessage(error, 'library'))
         setEnrollmentsLoading(false)
-        setEbookPurchasesError(error instanceof Error ? error.message : 'Unable to load your e-book purchases.')
+        setEbookPurchasesError(friendlyMessage(error, 'library'))
         setEbookPurchasesLoading(false)
       })
 
     return () => { active = false }
-  }, [session, paymentOrderStatus])
+  }, [session, paymentOrderStatus, libraryRefreshKey])
   useEffect(() => {
     if (page !== 'learn' || selectedCourse.type !== 'course'
       || (!owned.includes(selectedCourseId) && !(adminAccess && adminPreviewProductIds.includes(selectedCourseId)))
@@ -568,7 +572,7 @@ function App() {
       })
       .catch((error) => {
         if (controller.signal.aborted) return
-        setDeliveryError(error instanceof Error ? error.message : 'Unable to load course materials.')
+        setDeliveryError(friendlyMessage(error, 'lessons'))
       })
       .finally(() => {
         if (!controller.signal.aborted) setCourseLessonsLoading(false)
@@ -610,7 +614,7 @@ function App() {
         objectUrl = URL.createObjectURL(file)
         setEbookUrl(objectUrl)
       } catch (error) {
-        if (active) setDeliveryError(error instanceof Error ? error.message : 'Unable to open this e-book.')
+        if (active) setDeliveryError(friendlyMessage(error, 'ebook'))
       } finally {
         if (active) setDownloadBusy(false)
       }
@@ -657,7 +661,7 @@ function App() {
         .maybeSingle()
       if (!active) return
       if (error) {
-        setPaymentError(error.message)
+        setPaymentError(friendlyMessage(error, 'order'))
         return
       }
       if (!data) {
@@ -670,7 +674,7 @@ function App() {
       timer = window.setTimeout(checkOrder, 3000)
     }
     checkOrder().catch((error) => {
-      if (active) setPaymentError(error instanceof Error ? error.message : 'Unable to check payment status.')
+      if (active) setPaymentError(friendlyMessage(error, 'order'))
     })
 
     return () => {
@@ -751,15 +755,21 @@ function App() {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) {
-        setAccountError(error.message)
+        setAccountError(friendlyMessage(error, 'account'))
         return
       }
       setAdminPreviewProductIds([])
       setPage('home')
       setToast('You’ve signed out.')
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : 'Unable to sign out. Please try again.')
+      setAccountError(friendlyMessage(error, 'account'))
     }
+  }
+
+  const failFriendly = (message) => {
+    const error = new Error(message)
+    error.userFacing = true
+    return error
   }
 
   const verifyCheckoutPayment = async (response, orderRecordId) => {
@@ -768,7 +778,7 @@ function App() {
     setPaymentError('')
     try {
       if (!response.razorpay_payment_id || !response.razorpay_order_id || !response.razorpay_signature) {
-        throw new Error('Razorpay returned incomplete payment details.')
+        throw failFriendly('We didn’t receive the full payment confirmation. If money has left your account, don’t worry — it will be checked. Please try again or contact us.')
       }
       setPendingPayment({ response, orderRecordId })
       const { data, error } = await supabase.functions.invoke('verify-razorpay-payment', {
@@ -795,7 +805,7 @@ function App() {
       setPaymentOrderStatus('paid')
       setPage('payment-return')
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Unable to verify this payment. Please try again.')
+      setPaymentError(error?.userFacing ? error.message : friendlyMessage(error, 'payment'))
     } finally {
       setPaymentBusy(false)
       paymentAttemptActive.current = false
@@ -810,15 +820,15 @@ function App() {
     setPaymentError('')
 
     try {
-      if (!supabase || !session) throw new Error('Sign in to start checkout.')
+      if (!supabase || !session) throw failFriendly('Please sign in again to complete your purchase.')
       if (pendingPayment) {
         await verifyCheckoutPayment(pendingPayment.response, pendingPayment.orderRecordId)
         return
       }
-      if (!import.meta.env.VITE_RAZORPAY_KEY_ID) throw new Error('Razorpay is not configured for this storefront.')
-      if (typeof window.Razorpay !== 'function') throw new Error('Razorpay Checkout could not be loaded. Check your connection and try again.')
+      if (!import.meta.env.VITE_RAZORPAY_KEY_ID) throw failFriendly('Secure checkout isn’t quite ready yet. Nothing has been charged — please try again in a little while.')
+      if (typeof window.Razorpay !== 'function') throw failFriendly('The secure payment window couldn’t open. Check your connection and try again — nothing has been charged.')
       const productIds = checkoutCourses.map((product) => product.id)
-      if (!productIds.length) throw new Error('Choose an available item in your cart before checkout.')
+      if (!productIds.length) throw failFriendly('Please choose at least one item in your cart before checking out.')
 
       const { data: order, error: orderError } = await supabase.functions.invoke('create-razorpay-order', {
         body: { product_ids: productIds },
@@ -859,20 +869,23 @@ function App() {
             paymentAttemptActive.current = false
           },
         },
-        theme: { color: '#253b32' },
+        theme: { color: '#673ab7' },
       })
       checkout.on('payment.failed', (event) => {
         paymentModalResult.current = 'failed'
         setPaymentModalOpen(false)
         setPaymentBusy(false)
-        setPaymentError(event.error?.description || 'Razorpay could not complete this payment. Please try again.')
+        const failedMessage = event.error?.description
+          ? friendlyMessage(event.error.description, 'payment')
+          : 'That payment didn’t go through. Nothing has been charged — you can try again whenever you’re ready.'
+        setPaymentError(failedMessage)
         paymentAttemptActive.current = false
       })
       checkout.open()
       setPaymentBusy(false)
       setPaymentModalOpen(true)
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Unable to start Razorpay checkout. Please try again.')
+      setPaymentError(error?.userFacing ? error.message : friendlyMessage(error, 'payment'))
       setPaymentBusy(false)
       paymentAttemptActive.current = false
     }
@@ -912,7 +925,15 @@ function App() {
       </section>
 
       <div id="discover" className="catalog">
-        {catalogError && <p className="auth-feedback auth-error" role="alert">We couldn’t load the live catalog: {catalogError}</p>}
+        {catalogError && (
+          <Notice
+            variant="error"
+            title="Our collection needs a moment"
+            action={<button className="notice-action-button" type="button" onClick={() => refreshCatalog().catch(() => {})}>Try again</button>}
+          >
+            {catalogError}
+          </Notice>
+        )}
         {search || category !== 'All products' ? (
           <section className="course-section search-results">
             <div className="section-heading">
@@ -1004,7 +1025,7 @@ function App() {
             {checkoutCourses.map((product) => <div key={product.id}><span>{product.title}<small>{product.type === 'ebook' ? 'E-book PDF' : 'Course lessons'}</small></span><strong>{formatPrice(product.price)}</strong></div>)}
             <div className="demo-checkout-total"><strong>Total (display only)</strong><strong>{formatPrice(subtotal)}</strong></div>
           </div>
-          {!checkoutCourses.length && <p className="auth-feedback auth-error" role="alert">Your cart has no available selected items. Return to your cart to choose products.</p>}
+          {!checkoutCourses.length && <Notice variant="warning" title="Your cart is waiting">Your cart has no available selected items. Return to your cart to choose what you’d like.</Notice>}
           <div className="demo-checkout-actions">
             <button className="button button-dark" disabled={!checkoutCourses.length} onClick={() => {
               setAdminPreviewProductIds(checkoutCourses.map((product) => product.id))
@@ -1019,8 +1040,17 @@ function App() {
           {paymentBusy && <div className="payment-spinner" aria-hidden="true" />}
           <p className="eyebrow">SECURE PAYMENT</p>
           <h1>{paymentBusy ? 'Preparing secure checkout…' : paymentModalOpen ? 'Complete payment in Razorpay' : 'Razorpay checkout'}</h1>
-          <p>{paymentError || 'Your order total is verified securely before the Razorpay payment window opens.'}</p>
-          {paymentError && <p className="checkout-configuration-note">If the problem continues, check the Vite Razorpay Key ID and confirm both payment functions are deployed with Razorpay credentials in Supabase Function secrets.</p>}
+          {paymentError ? (
+            <Notice
+              variant="error"
+              title="Let’s sort that out"
+              action={<a className="notice-action-link" href="mailto:hello@infinivium.com">Contact us</a>}
+            >
+              {paymentError}
+            </Notice>
+          ) : (
+            <p>Your order total is verified securely before the Razorpay payment window opens. You’ll never be charged without a clear confirmation.</p>
+          )}
           <div className="payment-actions">
             <button className="button button-dark" disabled={paymentBusy || paymentModalOpen || !checkoutCourses.length} onClick={startCheckout}>
               {paymentBusy ? 'Preparing checkout…' : paymentModalOpen ? 'Razorpay is open…' : pendingPayment ? 'Retry payment verification' : paymentError ? 'Try again' : `Pay ${formatPrice(subtotal)} with Razorpay`}
@@ -1038,15 +1068,23 @@ function App() {
       <span className="success-sun"><Icon name="check" size={30} /></span>
       <p className="eyebrow">RAZORPAY PAYMENT</p>
       <h1>{paymentOrderStatus === 'paid' ? 'Payment confirmed.' : paymentOrderStatus === 'failed' ? 'Payment not completed.' : paymentOrderStatus === 'not-found' ? 'Order not found.' : 'Confirming your payment…'}</h1>
-      <p className="success-copy">{paymentError
-        ? `We couldn’t verify the order status: ${paymentError}`
-        : paymentOrderStatus === 'paid'
+      {paymentError ? (
+        <Notice
+          variant="error"
+          title="We’re checking on your order"
+          action={<a className="notice-action-link" href="mailto:hello@infinivium.com">Contact us</a>}
+        >
+          {paymentError}
+        </Notice>
+      ) : (
+        <p className="success-copy">{paymentOrderStatus === 'paid'
           ? 'Your purchase is confirmed. Your downloads and course links are now available in your library.'
           : paymentOrderStatus === 'failed'
             ? 'No access was granted. You can return to your cart and try again.'
             : paymentOrderStatus === 'not-found'
               ? 'We could not find this order on your account. Contact support if you believe payment was taken.'
               : 'Razorpay has returned you to Infinivium. Access is enabled only after our server verifies your payment.'}</p>
+      )}
       {paymentOrderStatus === 'pending' && <p className="delivery-status" role="status">Waiting for the secure payment confirmation…</p>}
       <div className="success-actions">
         <button className="button button-dark" onClick={() => navigate(paymentOrderStatus === 'paid' ? 'library' : 'cart')}>{paymentOrderStatus === 'paid' ? 'Open my library' : 'Return to cart'}</button>
@@ -1060,7 +1098,15 @@ function App() {
       <main className="inner-page delivery-page">
         <div className="breadcrumb"><button onClick={() => navigate('home')}>Home</button><Icon name="chevron" size={14} /><button onClick={() => navigate('library')}>My library</button><Icon name="chevron" size={14} /><span>{selectedCourse.title}</span></div>
         <div className="learning-heading"><div><p className="eyebrow">{isEbook ? 'YOUR E-BOOK' : 'YOUR COURSE'}</p><h1>{selectedCourse.title}</h1><p>{isEbook ? 'Pick up where you left off in your personal reader.' : 'Your lessons, together in one place.'}</p></div><button className="text-link" onClick={() => navigate('library')}><Icon name="book" size={16} /> My library</button></div>
-        {deliveryError && <p className="auth-feedback auth-error" role="alert">{deliveryError}</p>}
+        {deliveryError && (
+          <Notice
+            variant="error"
+            title={isEbook ? 'Your reader needs a moment' : 'Your lessons are on their way'}
+            action={<a className="notice-action-link" href="mailto:hello@infinivium.com">Contact us</a>}
+          >
+            {deliveryError}
+          </Notice>
+        )}
         {isEbook ? (
           <section className={`ebook-reader reader-${readerTheme}`} aria-label={`${selectedCourse.title} PDF reader`}>
             <div className="reader-toolbar">
@@ -1113,8 +1159,8 @@ function App() {
         <div className="breadcrumb"><button onClick={() => navigate('home')}>Home</button><Icon name="chevron" size={14} /><span>My library</span></div>
         <div className="page-title-block"><p className="eyebrow">YOUR OWN LITTLE LIBRARY</p><h1>My library</h1><p>Your e-books and course links, together in one place.</p></div>
         {adminAccess && adminPreviewProductIds.some((id) => !ownedProductIds.includes(id)) && <p className="admin-preview-notice" role="status">Admin preview only — these items haven’t been purchased. Access is temporary and isn’t recorded for students.</p>}
-        {currentEnrollmentsLoading ? <p className="auth-feedback">Loading your library…</p>
-          : currentEnrollmentsError ? <p className="auth-feedback auth-error" role="alert">We couldn’t load your enrollments: {currentEnrollmentsError}</p>
+        {currentEnrollmentsLoading ? <p className="loading-note" role="status"><span className="loading-spinner" aria-hidden="true" /> Gathering your books and courses…</p>
+          : currentEnrollmentsError ? <Notice variant="error" title="Your library is taking a moment" action={<button className="notice-action-button" type="button" onClick={() => setLibraryRefreshKey((key) => key + 1)}>Try again</button>}>{currentEnrollmentsError}</Notice>
             : myProducts.length ? <div className="course-grid library-grid">{myProducts.map((product) => <ProductCard key={product.id} course={product} purchased onOpen={openCourse} onAdd={addToCart} />)}</div>
               : <div className="empty-cart"><span className="empty-icon"><Icon name="book" size={24} /></span><h2>A library with room to grow.</h2><p>Your purchased e-books and course links will appear here once a payment is confirmed.</p><button className="button button-dark" onClick={() => navigate('home')}>Explore the collection <Icon name="arrow" size={16} /></button></div>}
       </main>
@@ -1137,7 +1183,22 @@ function App() {
           <button className={page === 'home' ? 'nav-active' : ''} onClick={() => navigate('home')}>Explore</button>
           <button onClick={navigateToSubscribe}>Subscribe</button>
         </nav>
-        <label className="search-field"><Icon name="search" size={18} /><input type="search" placeholder="Search for anything" value={search} onChange={(event) => { setSearch(event.target.value); setCategory('All products'); if (page !== 'home') setPage('home') }} aria-label="Search books and courses" /></label>
+        <div className="search-field">
+          <Icon name="search" size={18} />
+          <label className="visually-hidden" htmlFor="site-search">Search books and courses</label>
+          <input
+            id="site-search"
+            type="search"
+            placeholder="Search books, courses, or instructors"
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setCategory('All products'); if (page !== 'home') setPage('home') }}
+          />
+          {search && (
+            <button type="button" className="search-clear" onClick={() => { setSearch(''); setCategory('All products') }} aria-label="Clear search">
+              <Icon name="close" size={14} />
+            </button>
+          )}
+        </div>
         <div className="header-actions">
           <button className="header-secondary-link" onClick={() => setToast('Infinivium Business is coming soon.')}>Infinivium Business</button>
           <button className="cart-button" onClick={() => navigate('cart')} aria-label={`Cart${cart.length ? `, ${cart.length} items` : ''}`}><Icon name="cart" size={20} />{cart.length > 0 && <i>{cart.length}</i>}</button>
@@ -1148,10 +1209,31 @@ function App() {
           <button className="language-button" aria-label="Choose language" onClick={() => setToast('More languages are coming soon.')}><Icon name="globe" size={19} /></button>
         </div>
       </header>
-      <div className="mobile-search"><Icon name="search" size={18} /><input type="search" placeholder="Find a book or course" value={search} onChange={(event) => { setSearch(event.target.value); setCategory('All products'); if (page !== 'home') setPage('home') }} aria-label="Search books and courses" /></div>
+      <div className="mobile-search">
+        <Icon name="search" size={18} />
+        <label className="visually-hidden" htmlFor="mobile-site-search">Search books and courses</label>
+        <input
+          id="mobile-site-search"
+          type="search"
+          placeholder="Find a book or course"
+          value={search}
+          onChange={(event) => { setSearch(event.target.value); setCategory('All products'); if (page !== 'home') setPage('home') }}
+        />
+        {search && (
+          <button type="button" className="search-clear" onClick={() => { setSearch(''); setCategory('All products') }} aria-label="Clear search">
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </div>
       </>}
       {pageContent}
-      {accountError && <p className="account-error" role="alert">{accountError}</p>}
+      {accountError && (
+        <div className="account-notice-wrap">
+          <Notice variant="error" title="A quick note" onDismiss={() => setAccountError('')}>
+            {accountError}
+          </Notice>
+        </div>
+      )}
       {page !== 'admin' && <>
       <footer className="site-footer">
         <div className="footer-main">
