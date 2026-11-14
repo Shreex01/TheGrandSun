@@ -326,11 +326,13 @@ function App() {
   const [paymentOrderStatus, setPaymentOrderStatus] = useState('')
   const [paymentError, setPaymentError] = useState('')
   const [paymentBusy, setPaymentBusy] = useState(false)
-  const [paymentRetry, setPaymentRetry] = useState(0)
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [pendingPayment, setPendingPayment] = useState(null)
   const [useRealCheckout, setUseRealCheckout] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const catalogRequestId = useRef(0)
-  const checkoutRequestKey = useRef('')
+  const paymentAttemptActive = useRef(false)
+  const paymentModalResult = useRef('')
 
   const products = catalogProducts
   const storefrontProducts = products.filter((product) => product.published !== false)
@@ -640,49 +642,6 @@ function App() {
     }
   }, [authReady, page, session])
   useEffect(() => {
-    if (page !== 'checkout' || !authReady || !session) {
-      if (page !== 'checkout') checkoutRequestKey.current = ''
-      return
-    }
-    if (adminChecking || (adminAccess && !useRealCheckout)) return
-    const productIds = checkoutCourses.map((product) => product.id)
-    if (!productIds.length) {
-      setPaymentError('Choose an available item in your cart before checkout.')
-      return
-    }
-    const requestKey = `${session.user.id}:${productIds.join(',')}`
-    if (checkoutRequestKey.current === requestKey) return
-    checkoutRequestKey.current = requestKey
-
-    let active = true
-    setPaymentBusy(true)
-    setPaymentError('')
-    if (!supabase) {
-      setPaymentError('Razorpay checkout requires the connected Supabase project and deployed payment functions.')
-      setPaymentBusy(false)
-      return () => { active = false }
-    }
-
-    supabase.functions.invoke('create-razorpay-payment-link', {
-      body: { product_ids: productIds },
-    }).then(({ data, error }) => {
-      if (!active) return
-      if (error) throw error
-      const paymentUrl = new URL(data?.payment_url)
-      const isRazorpayHost = ['rzp.io', 'razorpay.com'].some((host) => paymentUrl.hostname === host || paymentUrl.hostname.endsWith(`.${host}`))
-      if (paymentUrl.protocol !== 'https:' || !isRazorpayHost) {
-        throw new Error('Razorpay returned an invalid checkout URL.')
-      }
-      window.location.assign(paymentUrl.toString())
-    }).catch((error) => {
-      if (!active) return
-      setPaymentError(error instanceof Error ? error.message : 'Unable to open Razorpay. Please try again.')
-      setPaymentBusy(false)
-    })
-
-    return () => { active = false }
-  }, [page, authReady, session, checkoutCourses, paymentRetry, adminAccess, adminChecking, useRealCheckout])
-  useEffect(() => {
     if (page !== 'payment-return' || !session || !paymentOrderId || !supabase) return undefined
 
     let active = true
@@ -800,6 +759,122 @@ function App() {
       setToast('You’ve signed out.')
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'Unable to sign out. Please try again.')
+    }
+  }
+
+  const verifyCheckoutPayment = async (response, orderRecordId) => {
+    setPaymentModalOpen(false)
+    setPaymentBusy(true)
+    setPaymentError('')
+    try {
+      if (!response.razorpay_payment_id || !response.razorpay_order_id || !response.razorpay_signature) {
+        throw new Error('Razorpay returned incomplete payment details.')
+      }
+      setPendingPayment({ response, orderRecordId })
+      const { data, error } = await supabase.functions.invoke('verify-razorpay-payment', {
+        body: {
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_signature: response.razorpay_signature,
+        },
+      })
+      if (error) {
+        let responseError
+        try {
+          responseError = await error.context?.clone?.().json()
+        } catch {
+          responseError = null
+        }
+        throw new Error(responseError?.error || error.message)
+      }
+      if (data?.verified !== true || data.order_record_id !== orderRecordId) {
+        throw new Error(data?.error || 'Razorpay could not verify this payment.')
+      }
+      setPendingPayment(null)
+      setPaymentOrderId(data.order_record_id)
+      setPaymentOrderStatus('paid')
+      setPage('payment-return')
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Unable to verify this payment. Please try again.')
+    } finally {
+      setPaymentBusy(false)
+      paymentAttemptActive.current = false
+    }
+  }
+
+  const startCheckout = async () => {
+    if (paymentAttemptActive.current) return
+    paymentAttemptActive.current = true
+    paymentModalResult.current = ''
+    setPaymentBusy(true)
+    setPaymentError('')
+
+    try {
+      if (!supabase || !session) throw new Error('Sign in to start checkout.')
+      if (pendingPayment) {
+        await verifyCheckoutPayment(pendingPayment.response, pendingPayment.orderRecordId)
+        return
+      }
+      if (!import.meta.env.VITE_RAZORPAY_KEY_ID) throw new Error('Razorpay is not configured for this storefront.')
+      if (typeof window.Razorpay !== 'function') throw new Error('Razorpay Checkout could not be loaded. Check your connection and try again.')
+      const productIds = checkoutCourses.map((product) => product.id)
+      if (!productIds.length) throw new Error('Choose an available item in your cart before checkout.')
+
+      const { data: order, error: orderError } = await supabase.functions.invoke('create-razorpay-order', {
+        body: { product_ids: productIds },
+      })
+      if (orderError) {
+        let responseError
+        try {
+          responseError = await orderError.context?.clone?.().json()
+        } catch {
+          responseError = null
+        }
+        throw new Error(responseError?.error || orderError.message)
+      }
+      if (typeof order?.order_id !== 'string' || typeof order?.order_record_id !== 'string'
+        || !Number.isSafeInteger(order?.amount) || order.amount < 100 || order.currency !== 'INR') {
+        throw new Error('The server returned an invalid Razorpay order.')
+      }
+
+      const checkout = new window.Razorpay({
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'Infinivium',
+        description: `${productIds.length} ${productIds.length === 1 ? 'item' : 'items'}`,
+        order_id: order.order_id,
+        prefill: { email: session.user.email },
+        handler: async (response) => {
+          paymentModalResult.current = 'success'
+          await verifyCheckoutPayment(response, order.order_record_id)
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentModalOpen(false)
+            setPaymentBusy(false)
+            if (!paymentModalResult.current) {
+              setPaymentError('Payment was cancelled. You can try again whenever you are ready.')
+            }
+            paymentAttemptActive.current = false
+          },
+        },
+        theme: { color: '#253b32' },
+      })
+      checkout.on('payment.failed', (event) => {
+        paymentModalResult.current = 'failed'
+        setPaymentModalOpen(false)
+        setPaymentBusy(false)
+        setPaymentError(event.error?.description || 'Razorpay could not complete this payment. Please try again.')
+        paymentAttemptActive.current = false
+      })
+      checkout.open()
+      setPaymentBusy(false)
+      setPaymentModalOpen(true)
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Unable to start Razorpay checkout. Please try again.')
+      setPaymentBusy(false)
+      paymentAttemptActive.current = false
     }
   }
 
@@ -935,7 +1010,7 @@ function App() {
               setAdminPreviewProductIds(checkoutCourses.map((product) => product.id))
               navigate('library')
             }}>Preview delivery (no payment)</button>
-            <button className="button button-outline" onClick={() => { checkoutRequestKey.current = ''; setUseRealCheckout(true); setPaymentRetry((count) => count + 1) }}>Try real Razorpay checkout</button>
+            <button className="button button-outline" onClick={() => { setUseRealCheckout(true); setPaymentError('') }}>Try real Razorpay checkout</button>
           </div>
           <p className="demo-checkout-disclaimer">Preview access is temporary and admin-only. No student access or payment record is created.</p>
         </section>
@@ -943,14 +1018,16 @@ function App() {
         <section className="payment-status-card">
           {paymentBusy && <div className="payment-spinner" aria-hidden="true" />}
           <p className="eyebrow">SECURE PAYMENT</p>
-          <h1>{paymentBusy ? 'Connecting to Razorpay…' : 'Razorpay checkout'}</h1>
-          <p>{paymentError || 'Your order total is verified securely. You will be redirected to Razorpay to complete payment.'}</p>
-          {paymentError && <p className="checkout-configuration-note">A real Razorpay redirect requires <code>RAZORPAY_KEY_ID</code>, <code>RAZORPAY_KEY_SECRET</code>, <code>RAZORPAY_WEBHOOK_SECRET</code>, and <code>APP_URL</code> in Supabase Function secrets, plus a configured Razorpay webhook.</p>}
-          {paymentError && <div className="payment-actions">
-            <button className="button button-dark" onClick={() => { checkoutRequestKey.current = ''; setPaymentRetry((count) => count + 1) }}>Try again</button>
+          <h1>{paymentBusy ? 'Preparing secure checkout…' : paymentModalOpen ? 'Complete payment in Razorpay' : 'Razorpay checkout'}</h1>
+          <p>{paymentError || 'Your order total is verified securely before the Razorpay payment window opens.'}</p>
+          {paymentError && <p className="checkout-configuration-note">If the problem continues, check the Vite Razorpay Key ID and confirm both payment functions are deployed with Razorpay credentials in Supabase Function secrets.</p>}
+          <div className="payment-actions">
+            <button className="button button-dark" disabled={paymentBusy || paymentModalOpen || !checkoutCourses.length} onClick={startCheckout}>
+              {paymentBusy ? 'Preparing checkout…' : paymentModalOpen ? 'Razorpay is open…' : pendingPayment ? 'Retry payment verification' : paymentError ? 'Try again' : `Pay ${formatPrice(subtotal)} with Razorpay`}
+            </button>
             {adminAccess && <button className="button button-outline" onClick={() => { setUseRealCheckout(false); setPaymentError('') }}>Use admin preview instead</button>}
             <button className="button button-outline" onClick={() => navigate('cart')}>Return to cart</button>
-          </div>}
+          </div>
         </section>
       )}
     </main>
