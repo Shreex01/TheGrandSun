@@ -283,6 +283,10 @@ button { border: 0; background: none; cursor: pointer; }
 .signup-success-alert p { margin: 0 0 7px; color: #5d645b; font-size: 12px; line-height: 1.55; }
 .signup-success-alert p b { color: #30392f; }
 .signup-success-alert div > span { color: #39784a; font-size: 11px; font-weight: 700; }
+.logout-alert { position: fixed; z-index: 40; top: 92px; left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid #ded7e9; border-radius: 16px; background: #fff; color: #30392f; box-shadow: 0 18px 50px rgba(35, 43, 34, .18); animation: toast-in .22s ease-out; }
+.logout-alert strong { display: block; margin-bottom: 4px; font-size: 13px; }
+.logout-alert p { margin: 0; color: #85808c; font-size: 11px; }
+.logout-spinner { flex: 0 0 auto; width: 34px; height: 34px; border: 3px solid #eee8f6; border-top-color: #673ab7; border-radius: 50%; animation: payment-spin .8s linear infinite; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (min-width: 1200px) {

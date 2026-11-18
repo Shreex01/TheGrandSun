@@ -342,6 +342,7 @@ function App() {
   const [slide, setSlide] = useState(0)
   const [toast, setToast] = useState('')
   const [signupSuccess, setSignupSuccess] = useState(null)
+  const [logoutAlert, setLogoutAlert] = useState(false)
   const [deliveryError, setDeliveryError] = useState('')
   const [downloadBusy, setDownloadBusy] = useState(false)
   const [ebookUrl, setEbookUrl] = useState('')
@@ -790,17 +791,24 @@ function App() {
   }
   const signOut = async () => {
     if (!supabase) return
+    if (logoutAlert) return
     setAccountError('')
+    setLogoutAlert(true)
+    await new Promise((resolve) => window.setTimeout(resolve, 700))
     try {
       const { error } = await supabase.auth.signOut()
       if (error) {
+        setLogoutAlert(false)
         setAccountError(friendlyMessage(error, 'account'))
         return
       }
+      setSession(null)
       setAdminPreviewProductIds([])
       setPage('home')
+      setLogoutAlert(false)
       setToast('You’ve signed out.')
     } catch (error) {
+      setLogoutAlert(false)
       setAccountError(friendlyMessage(error, 'account'))
     }
   }
@@ -1293,6 +1301,15 @@ function App() {
             <strong>Account created successfully</strong>
             <p>Check <b>{signupSuccess.email}</b> and verify your email before signing in.</p>
             <span>Returning to the homepage in {signupSuccess.seconds}s</span>
+          </div>
+        </div>
+      )}
+      {logoutAlert && (
+        <div className="logout-alert" role="alert" aria-live="assertive">
+          <span className="logout-spinner" aria-hidden="true" />
+          <div>
+            <strong>Logging you out of your account…</strong>
+            <p>Please wait a moment.</p>
           </div>
         </div>
       )}
