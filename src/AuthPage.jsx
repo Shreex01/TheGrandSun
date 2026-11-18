@@ -118,7 +118,7 @@ function PasswordGuidance({ result, password }) {
   )
 }
 
-function AuthPage({ initialMode, onAuthenticated, onModeChange }) {
+function AuthPage({ initialMode, onAuthenticated, onModeChange, onSignupSuccess }) {
   const [mode, setMode] = useState(initialMode)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -223,7 +223,11 @@ function AuthPage({ initialMode, onAuthenticated, onModeChange }) {
           return
         }
         if (!result.error) {
-          showSuccess('One more step', 'Check your inbox for a verification link to finish creating your account.')
+          if (onSignupSuccess) {
+            onSignupSuccess(emailValue)
+          } else {
+            showSuccess('Account created', 'Check your inbox and verify your account before signing in.')
+          }
           return
         }
       } else if (mode === 'login') {

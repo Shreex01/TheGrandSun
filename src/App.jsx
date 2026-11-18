@@ -341,6 +341,7 @@ function App() {
   const [category, setCategory] = useState('All products')
   const [slide, setSlide] = useState(0)
   const [toast, setToast] = useState('')
+  const [signupSuccess, setSignupSuccess] = useState(null)
   const [deliveryError, setDeliveryError] = useState('')
   const [downloadBusy, setDownloadBusy] = useState(false)
   const [ebookUrl, setEbookUrl] = useState('')
@@ -724,6 +725,19 @@ function App() {
     const timer = window.setTimeout(() => setToast(''), 2600)
     return () => window.clearTimeout(timer)
   }, [toast])
+  useEffect(() => {
+    if (!signupSuccess) return undefined
+    if (signupSuccess.seconds <= 0) {
+      setSignupSuccess(null)
+      setPage('home')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return undefined
+    }
+    const timer = window.setTimeout(() => {
+      setSignupSuccess((current) => current ? { ...current, seconds: current.seconds - 1 } : null)
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [signupSuccess])
 
   const navigate = (nextPage, course) => {
     if ((nextPage === 'library' || nextPage === 'learn' || nextPage === 'checkout' || nextPage === 'admin' || nextPage === 'profile') && !session) {
@@ -770,6 +784,9 @@ function App() {
     setPage(authReturnPage)
     setAuthReturnPage('home')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const finishSignup = (email) => {
+    setSignupSuccess({ email, seconds: 10 })
   }
   const signOut = async () => {
     if (!supabase) return
@@ -1074,7 +1091,7 @@ function App() {
           )}
           <div className="payment-actions">
             <button className="button button-dark" disabled={paymentBusy || paymentModalOpen || !checkoutCourses.length} onClick={startCheckout}>
-              {paymentBusy ? 'Preparing checkout…' : paymentModalOpen ? 'Razorpay is open…' : pendingPayment ? 'Retry payment verification' : paymentError ? 'Try again' : `Pay ${formatPrice(subtotal)} with Razorpay`}
+              {paymentBusy ? 'Preparing checkout…' : paymentModalOpen ? 'Razorpay is open…' : pendingPayment ? 'Retry payment verification' : paymentError ? 'Try again' : 'Checkout'}
             </button>
             {adminAccess && <button className="button button-outline" onClick={() => { setUseRealCheckout(false); setPaymentError('') }}>Use admin preview instead</button>}
             <button className="button button-outline" onClick={() => navigate('cart')}>Return to cart</button>
@@ -1195,7 +1212,7 @@ function App() {
     : page === 'profile' ? session
       ? <ProfilePage key={`${session.user.id}:${session.user.email}`} user={session.user} onSignOut={signOut} />
       : <main className="profile-page"><p className="profile-loading" role="status">Checking your account…</p></main>
-      : page === 'auth' ? <AuthPage initialMode={authMode} onModeChange={setAuthMode} onAuthenticated={finishAuthentication} /> : page === 'home' ? renderHome() : page === 'cart' ? renderCart() : page === 'checkout' ? renderCheckout() : page === 'payment-return' ? renderPaymentReturn() : page === 'course' ? renderCourseDetails() : page === 'learn' ? renderLearning() : renderLibrary()
+      : page === 'auth' ? <AuthPage initialMode={authMode} onModeChange={setAuthMode} onAuthenticated={finishAuthentication} onSignupSuccess={finishSignup} /> : page === 'home' ? renderHome() : page === 'cart' ? renderCart() : page === 'checkout' ? renderCheckout() : page === 'payment-return' ? renderPaymentReturn() : page === 'course' ? renderCourseDetails() : page === 'learn' ? renderLearning() : renderLibrary()
   return (
     <div className={`site-shell${page === 'admin' ? ' admin-shell' : ''}`}>
       {page !== 'admin' && <>
@@ -1229,7 +1246,7 @@ function App() {
             <button className="header-auth-button" onClick={() => { setAuthMode('login'); setAuthReturnPage('home'); navigate('auth') }}>Log in</button>
             <button className="header-signup-button" onClick={() => { setAuthMode('signup'); setAuthReturnPage('home'); setPage('auth') }}>Sign up</button>
           </>}
-          <button className={`profile-button${page === 'profile' ? ' profile-button-active' : ''}`} onClick={() => navigate('profile')} aria-label="Open profile"><Icon name="user" size={17} />Profile</button>
+          {session && <button className={`profile-button${page === 'profile' ? ' profile-button-active' : ''}`} onClick={() => navigate('profile')} aria-label="Open profile"><Icon name="user" size={17} />Profile</button>}
         </div>
       </header>
       <div className="mobile-search">
@@ -1269,6 +1286,16 @@ function App() {
       </footer>
       </>}
       {toast && <div className="toast-message" role="status"><span><Icon name="check" size={17} /></span>{toast}</div>}
+      {signupSuccess && (
+        <div className="signup-success-alert" role="alert" aria-live="assertive">
+          <span className="signup-success-icon"><Icon name="check" size={24} /></span>
+          <div>
+            <strong>Account created successfully</strong>
+            <p>Check <b>{signupSuccess.email}</b> and verify your email before signing in.</p>
+            <span>Returning to the homepage in {signupSuccess.seconds}s</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

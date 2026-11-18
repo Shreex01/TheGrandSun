@@ -277,6 +277,12 @@ button { border: 0; background: none; cursor: pointer; }
 .hero-proof { font-size: 10px; }
 .toast-message { position: fixed; z-index: 10; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 10px; max-width: min(400px, calc(100vw - 32px)); padding: 12px 17px 12px 12px; box-shadow: 0 8px 26px rgba(0,0,0,.15); background: #30392f; color: #fffdf6; font-size: 11px; animation: toast-in .22s ease-out; }
 .toast-message > span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #e0bd78; color: #30392f; }
+.signup-success-alert { position: fixed; z-index: 30; top: 92px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 14px; padding: 18px; border: 1px solid #cfe4d2; border-radius: 16px; background: #fbfffc; color: #30392f; box-shadow: 0 18px 50px rgba(35, 43, 34, .18); animation: toast-in .22s ease-out; }
+.signup-success-icon { flex: 0 0 auto; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #dff1e3; color: #39784a; }
+.signup-success-alert strong { display: block; margin: 1px 0 5px; font-size: 14px; }
+.signup-success-alert p { margin: 0 0 7px; color: #5d645b; font-size: 12px; line-height: 1.55; }
+.signup-success-alert p b { color: #30392f; }
+.signup-success-alert div > span { color: #39784a; font-size: 11px; font-weight: 700; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (min-width: 1200px) {
