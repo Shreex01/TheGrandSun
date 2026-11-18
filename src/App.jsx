@@ -1177,7 +1177,7 @@ function App() {
       {page !== 'admin' && <>
       <div className="header-top-strip" />
       <header className="site-header">
-        <button className="brand" onClick={() => navigate('home')} aria-label="Infinivium home"><span className="brand-mark" aria-hidden="true" /><span className="brand-name">infinivium</span></button>
+        <button className="brand" onClick={() => navigate('home')} aria-label="Infinivium home"><img className="brand-logo" src="/infinivium-logo.png" alt="" /></button>
         <button className="mobile-menu-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}><Icon name={mobileMenuOpen ? 'close' : 'menu'} size={22} /></button>
         <nav className={`main-nav${mobileMenuOpen ? ' nav-open' : ''}`} aria-label="Main navigation">
           <button className={page === 'home' ? 'nav-active' : ''} onClick={() => navigate('home')}>Explore</button>
@@ -1237,7 +1237,7 @@ function App() {
       {page !== 'admin' && <>
       <footer className="site-footer">
         <div className="footer-main">
-          <div className="footer-brand-block"><button className="brand footer-brand" onClick={() => navigate('home')}><span className="brand-mark" aria-hidden="true" /><span className="brand-name">infinivium</span></button><p>Find a new idea.<br />Make room to grow.</p></div>
+          <div className="footer-brand-block"><button className="brand footer-brand" onClick={() => navigate('home')} aria-label="Infinivium home"><img className="brand-logo" src="/infinivium-logo.png" alt="" /></button><p>Find a new idea.<br />Make room to grow.</p></div>
           <div className="footer-column"><p className="footer-heading">A good place to start</p><button onClick={() => navigate('home')}>Explore the collection</button><button onClick={() => navigate('library')}>My library</button><button onClick={() => navigate('cart')}>Your cart</button></div>
           <div className="footer-column"><p className="footer-heading">A little hello</p><a href="mailto:hello@infinivium.com">Get in touch</a><a href="https://www.instagram.com/" target="_blank" rel="noreferrer">Instagram <span>↗</span></a><a href="https://www.facebook.com/" target="_blank" rel="noreferrer">Facebook <span>↗</span></a><a href="https://www.youtube.com/" target="_blank" rel="noreferrer">YouTube <span>↗</span></a></div>
           <div className="footer-note"><span className="footer-sun"><Icon name="sun" size={22} /></span><p>Here’s to a life<br />of always learning.</p></div>
