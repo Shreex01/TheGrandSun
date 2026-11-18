@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Lenis from 'lenis'
+import 'lenis/dist/lenis.css'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { StarIcon } from '@hugeicons/core-free-icons'
 import './App.css'
 import './polish.css'
 import AdminPage from './AdminPage.jsx'
@@ -6,8 +10,11 @@ import AuthPage from './AuthPage.jsx'
 import ProfilePage from './ProfilePage.jsx'
 import Notice from './components/Notice.jsx'
 import HoldButton from './components/HoldButton.jsx'
+import PeekRating from './components/PeekRating.jsx'
+import SlideCommit from './components/SlideCommit.jsx'
 import { supabase } from './lib/supabase.js'
 import { mapCatalogRows } from './lib/catalog.js'
+import { selectFeaturedProducts } from './lib/featured.js'
 import { friendlyMessage } from './lib/messages.js'
 
 const courses = [
@@ -170,6 +177,7 @@ const demoProducts = [
 const categories = ['All products', 'E-books', 'Courses', 'Design', 'Photography', 'Lifestyle', 'Wellness', 'Art']
 const imageUrl = (id, width = 720) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=85`
+const productRatingKey = (product) => `${product.type ?? 'course'}:${product.id}`
 const formatPrice = (amount) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -251,19 +259,22 @@ function Icon({ name, size = 20 }) {
   )
 }
 
-function ProductCard({ course, purchased, onOpen, onAdd }) {
+function ProductCard({ course, ratingSummary, purchased, onOpen, onAdd }) {
   const isEbook = course.type === 'ebook'
+  const rating = ratingSummary ? Number(ratingSummary.average_rating).toFixed(1) : '—'
   return (
     <article className="course-card">
       <button className="course-image-button" onClick={() => onOpen(course)} aria-label={`View ${course.title}`}>
         <img className="course-image" src={imageUrl(course.image)} alt={course.imageAlt} />
         <span className="course-tag">{isEbook ? 'E-book' : 'Course'} · {course.tag}</span>
+        <span className="course-rating-badge" aria-label={ratingSummary ? `${rating} out of 5 stars, ${ratingSummary.rating_count} ratings` : 'No rating data available'}>
+          <strong>{rating}</strong><HugeiconsIcon icon={StarIcon} size={14} fill="currentColor" strokeWidth={1.5} />
+        </span>
       </button>
       <div className="course-card-body">
         <p className="course-category">{course.category}</p>
         <button className="course-title-button" onClick={() => onOpen(course)}>{course.title}</button>
         <p className="course-instructor">{isEbook ? 'by' : 'with'} {course.instructor}</p>
-        <div className="course-rating"><Icon name="star" size={15} /><strong>{course.rating}</strong><span>({course.reviews.toLocaleString()})</span></div>
         <div className="course-card-bottom">
           <strong className="course-price">{formatPrice(course.price)}</strong>
           {purchased ? (
@@ -296,7 +307,7 @@ function ProductCard({ course, purchased, onOpen, onAdd }) {
   )
 }
 
-function ProductSection({ title, eyebrow, description, items, owned, onOpen, onAdd, onExplore }) {
+function ProductSection({ title, eyebrow, description, items, owned, ratingSummaries, onOpen, onAdd }) {
   return (
     <section className="course-section">
       <div className="section-heading">
@@ -305,10 +316,9 @@ function ProductSection({ title, eyebrow, description, items, owned, onOpen, onA
           <h2>{title}</h2>
           <p className="section-description">{description}</p>
         </div>
-        <button className="text-link" onClick={onExplore}>Explore all <Icon name="arrow" size={17} /></button>
       </div>
       <div className="course-grid">
-        {items.map((course) => <ProductCard key={course.id} course={course} purchased={owned.includes(course.id)} onOpen={onOpen} onAdd={onAdd} />)}
+        {items.map((course) => <ProductCard key={course.id} course={course} ratingSummary={ratingSummaries[productRatingKey(course)]} purchased={owned.includes(course.id)} onOpen={onOpen} onAdd={onAdd} />)}
       </div>
     </section>
   )
@@ -319,12 +329,21 @@ function App() {
   const [selectedCourseId, setSelectedCourseId] = useState(() => readRoute().selectedCourseId ?? courses[0].id)
   const [cart, setCart] = useState(() => readStored('infinivium-cart', readStored('grand-sun-cart', [])))
   const [selectedCart, setSelectedCart] = useState(() => readStored('infinivium-selected-cart', readStored('grand-sun-selected-cart', [])))
+  const [directCheckoutProductId, setDirectCheckoutProductId] = useState(null)
   const [session, setSession] = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [adminCheckUserId, setAdminCheckUserId] = useState(null)
   const [adminRole, setAdminRole] = useState(false)
   const [catalogProducts, setCatalogProducts] = useState(demoProducts)
   const [catalogError, setCatalogError] = useState('')
+  const [featuredNotice, setFeaturedNotice] = useState('')
+  const [featuredProductIds, setFeaturedProductIds] = useState(() => selectFeaturedProducts(demoProducts, new Map()).map((product) => product.id))
+  const [ratingSummaries, setRatingSummaries] = useState({})
+  const [ratingValue, setRatingValue] = useState(0)
+  const [ratingLoading, setRatingLoading] = useState(false)
+  const [ratingSaving, setRatingSaving] = useState(false)
+  const [ratingError, setRatingError] = useState('')
+  const [ratingNotice, setRatingNotice] = useState('')
   const [authMode, setAuthMode] = useState(() => readRoute().authMode ?? 'login')
   const [authReturnPage, setAuthReturnPage] = useState('home')
   const [owned, setOwned] = useState([])
@@ -341,6 +360,7 @@ function App() {
   const [category, setCategory] = useState('All products')
   const [slide, setSlide] = useState(0)
   const [toast, setToast] = useState('')
+  const [cartPulse, setCartPulse] = useState(0)
   const [signupSuccess, setSignupSuccess] = useState(null)
   const [logoutAlert, setLogoutAlert] = useState(false)
   const [deliveryError, setDeliveryError] = useState('')
@@ -357,15 +377,19 @@ function App() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [pendingPayment, setPendingPayment] = useState(null)
   const [useRealCheckout, setUseRealCheckout] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [heroPaused, setHeroPaused] = useState(false)
   const catalogRequestId = useRef(0)
   const paymentAttemptActive = useRef(false)
   const paymentModalResult = useRef('')
+  const heroRef = useRef(null)
+  const heroWheelLock = useRef(0)
+  const ratingRequestId = useRef(0)
 
   const products = catalogProducts
   const storefrontProducts = products.filter((product) => product.published !== false)
-  const featured = storefrontProducts.filter((product) => product.type === 'course').slice(0, 3)
-  const featuredCourse = featured[slide] ?? featured[0] ?? courses[0]
+  const featured = featuredProductIds
+    .map((id) => storefrontProducts.find((product) => product.id === id))
+    .filter(Boolean)
   const adminAccess = Boolean(session && adminCheckUserId === session.user.id && adminRole)
   const adminChecking = Boolean(session && adminCheckUserId !== session.user.id)
   const selectedCourse = products.find((course) => course.id === selectedCourseId) ?? courses[0]
@@ -376,7 +400,9 @@ function App() {
   const currentEnrollmentsLoading = Boolean(session && (enrollmentsLoading || ebookPurchasesLoading || enrollmentUserId !== session.user.id))
   const currentEnrollmentsError = enrollmentUserId === session?.user.id ? [enrollmentsError, ebookPurchasesError].filter(Boolean).join(' ') : ''
   const cartCourses = cart.map((id) => storefrontProducts.find((course) => course.id === id)).filter(Boolean)
-  const checkoutCourses = cartCourses.filter((course) => selectedCart.includes(course.id) && course.published !== false)
+  const checkoutCourses = directCheckoutProductId
+    ? storefrontProducts.filter((course) => course.id === directCheckoutProductId)
+    : cartCourses.filter((course) => selectedCart.includes(course.id) && course.published !== false)
   const subtotal = checkoutCourses.reduce((total, course) => total + course.price, 0)
   const filteredCourses = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -396,9 +422,10 @@ function App() {
       return
     }
 
-    const [courseResult, ebookResult] = await Promise.all([
+    const [courseResult, ebookResult, popularResult] = await Promise.all([
       supabase.from('courses').select('id,title,category,instructor,price_inr,published').order('title'),
       supabase.from('ebooks').select('id,title,category,author,price_inr,pages,file_format,published').order('title'),
+      supabase.rpc('get_popular_products'),
     ])
     if (requestId !== catalogRequestId.current) return
     if (courseResult.error || ebookResult.error) {
@@ -407,11 +434,51 @@ function App() {
       throw error
     }
     setCatalogError('')
-    setCatalogProducts(mapCatalogRows(courseResult.data, ebookResult.data, demoProducts))
+    const nextProducts = mapCatalogRows(courseResult.data, ebookResult.data, demoProducts)
+    setCatalogProducts(nextProducts)
+    if (popularResult.error) {
+      setFeaturedNotice('Popular picks are temporarily unavailable, so we’re showing a random selection.')
+      console.error('Popular products could not be loaded', popularResult.error)
+      setFeaturedProductIds(selectFeaturedProducts(nextProducts, new Map()).map((product) => product.id))
+    } else {
+      setFeaturedNotice('')
+      const purchaseCounts = new Map((popularResult.data ?? []).map(({ product_id, purchase_count }) => [product_id, Number(purchase_count)]))
+      setFeaturedProductIds(selectFeaturedProducts(nextProducts, purchaseCounts).map((product) => product.id))
+    }
+    setSlide(0)
+  }, [])
+  const refreshRatingSummaries = useCallback(async () => {
+    if (!supabase) {
+      setRatingError('Ratings are unavailable right now.')
+      return false
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_product_rating_summaries')
+      if (error) {
+        console.error('Product ratings could not be loaded', error)
+        setRatingError('Ratings are unavailable right now. Please try again later.')
+        return false
+      }
+      setRatingSummaries(Object.fromEntries((data ?? []).map((summary) => [
+        `${summary.product_type}:${summary.product_id}`,
+        summary,
+      ])))
+      setRatingError('')
+      return true
+    } catch (error) {
+      console.error('Product ratings could not be loaded', error)
+      setRatingError('Ratings are unavailable right now. Please try again later.')
+      return false
+    }
   }, [])
 
   useEffect(() => { localStorage.setItem('infinivium-cart', JSON.stringify(cart)) }, [cart])
   useEffect(() => { localStorage.setItem('infinivium-selected-cart', JSON.stringify(selectedCart)) }, [selectedCart])
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+    const lenis = new Lenis({ autoRaf: true, lerp: 0.085, smoothWheel: true, wheelMultiplier: 0.85 })
+    return () => lenis.destroy()
+  }, [])
   useEffect(() => {
     const path = routePath(page, authMode, selectedCourseId, paymentOrderId)
     if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({ infinivium: true }, '', path)
@@ -430,6 +497,55 @@ function App() {
   useEffect(() => {
     refreshCatalog().catch(() => {})
   }, [refreshCatalog, session])
+  useEffect(() => {
+    if (page !== 'course') return undefined
+    const requestId = ++ratingRequestId.current
+    setRatingLoading(true)
+    setRatingError('')
+    setRatingNotice('')
+    setRatingValue(0)
+    const loadRating = async () => {
+      const summariesLoaded = await refreshRatingSummaries()
+      if (session && supabase) {
+        const { data, error } = await supabase
+          .from('product_ratings')
+          .select('rating')
+          .eq('product_id', selectedCourse.id)
+          .eq('product_type', selectedCourse.type ?? 'course')
+          .maybeSingle()
+        if (error) {
+          console.error('Your product rating could not be loaded', error)
+          if (requestId === ratingRequestId.current) setRatingError('Your rating could not be loaded. Please try again later.')
+        } else if (requestId === ratingRequestId.current) {
+          const currentRating = Number(data?.rating ?? 0)
+          setRatingValue(currentRating)
+        }
+      } else if (requestId === ratingRequestId.current) {
+        setRatingValue(0)
+      }
+      if (requestId === ratingRequestId.current) {
+        if (!summariesLoaded && !session) setRatingError('Ratings are unavailable right now. Please try again later.')
+        setRatingLoading(false)
+      }
+    }
+    loadRating().catch((error) => {
+      console.error('Product rating details could not be loaded', error)
+      if (requestId === ratingRequestId.current) {
+        setRatingError('Ratings are unavailable right now. Please try again later.')
+        setRatingLoading(false)
+      }
+    })
+    return () => {
+      if (requestId === ratingRequestId.current) ratingRequestId.current += 1
+    }
+  }, [page, selectedCourse.id, selectedCourse.type, session, refreshRatingSummaries])
+  useEffect(() => {
+    if (page !== 'home') return
+    refreshRatingSummaries().catch((error) => {
+      console.error('Product ratings could not be loaded', error)
+      setRatingError('Ratings are unavailable right now. Please try again later.')
+    })
+  }, [page, refreshRatingSummaries])
   useEffect(() => {
     if (!supabase) return undefined
     const channel = supabase
@@ -717,10 +833,24 @@ function App() {
     }
   }, [page, adminAccess, adminChecking, adminCheckUserId, session])
   useEffect(() => {
-    if (featured.length < 2) return undefined
-    const timer = window.setInterval(() => setSlide((current) => (current + 1) % featured.length), 6500)
+    if (featured.length < 2 || page !== 'home' || heroPaused) return undefined
+    const timer = window.setInterval(() => setSlide((current) => (current + 1) % featured.length), 8000)
     return () => window.clearInterval(timer)
-  }, [featured.length])
+  }, [featured.length, heroPaused, page])
+  useEffect(() => {
+    const hero = heroRef.current
+    if (page !== 'home' || !hero || featured.length < 2) return undefined
+    const handleWheel = (event) => {
+      if (Math.abs(event.deltaY) < 20) return
+      event.preventDefault()
+      const now = Date.now()
+      if (now - heroWheelLock.current < 450) return
+      heroWheelLock.current = now
+      setSlide((current) => (current + (event.deltaY > 0 ? 1 : -1) + featured.length) % featured.length)
+    }
+    hero.addEventListener('wheel', handleWheel, { passive: false })
+    return () => hero.removeEventListener('wheel', handleWheel)
+  }, [featured.length, page])
   useEffect(() => {
     if (!toast) return undefined
     const timer = window.setTimeout(() => setToast(''), 2600)
@@ -745,7 +875,6 @@ function App() {
       setAuthReturnPage(nextPage === 'learn' ? 'library' : nextPage)
       setAuthMode('login')
       setPage('auth')
-      setMobileMenuOpen(false)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
@@ -756,14 +885,12 @@ function App() {
     if (nextPage === 'checkout') setUseRealCheckout(false)
     if (nextPage === 'learn' && !accessibleProductIds.includes(course?.id ?? selectedCourseId)) {
       setPage('course')
-      setMobileMenuOpen(false)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
     if (nextPage === 'learn') setDeliveryError('')
     if (course) setSelectedCourseId(course.id)
     setPage(nextPage)
-    setMobileMenuOpen(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const openCourse = (course) => navigate(accessibleProductIds.includes(course.id) ? 'learn' : 'course', course)
@@ -774,7 +901,51 @@ function App() {
     }
     setCart((items) => [...items, course.id])
     setSelectedCart((items) => [...items, course.id])
+    setCartPulse((pulse) => pulse + 1)
     setToast('Added to your cart.')
+  }
+  const submitProductRating = async (rating) => {
+    if (!session) {
+      setRatingNotice('Sign in to save your rating.')
+      return
+    }
+    if (!supabase || !rating) return
+    setRatingSaving(true)
+    setRatingError('')
+    setRatingNotice('')
+    try {
+      const { error } = await supabase.from('product_ratings').upsert({
+        product_id: selectedCourse.id,
+        product_type: selectedCourse.type ?? 'course',
+        user_id: session.user.id,
+        rating,
+      }, { onConflict: 'product_type,product_id,user_id' })
+      if (error) throw error
+      setRatingValue(rating)
+      const refreshed = await refreshRatingSummaries()
+      setRatingNotice(refreshed
+        ? 'Your rating has been saved. Thanks for sharing!'
+        : 'Your rating was saved, but the average could not be refreshed.')
+    } catch (error) {
+      console.error('Your product rating could not be saved', error)
+      setRatingError(error.message)
+      setRatingNotice('Your rating could not be saved. Please try again.')
+    } finally {
+      setRatingSaving(false)
+    }
+  }
+  const handleProductRatingChange = (rating) => {
+    setRatingValue(rating)
+    if (!session) {
+      setRatingError('')
+      setRatingNotice('Sign in to save your rating.')
+      return
+    }
+    void submitProductRating(rating)
+  }
+  const buyNow = (product) => {
+    setDirectCheckoutProductId(product.id)
+    navigate('checkout')
   }
   const toggleCartItem = (courseId) => {
     setSelectedCart((items) => items.includes(courseId) ? items.filter((id) => id !== courseId) : [...items, courseId])
@@ -938,31 +1109,59 @@ function App() {
     }
   }
 
-  const navigateToSubscribe = () => {
-    if (page !== 'home') setPage('home')
-    window.setTimeout(() => document.getElementById('newsletter')?.scrollIntoView({ behavior: 'smooth' }), 0)
-  }
-
   const renderHome = () => (
     <>
-      <section className="hero-section" aria-label="Featured learning resources">
-        <div className="hero-photo" style={{ backgroundImage: `url("${imageUrl(featuredCourse.image, 1800)}")` }} />
-        <div className="hero-scrim" />
-        <div className="hero-content">
-          <span className="hero-kicker"><span className="kicker-sun"><Icon name="sun" size={14} /></span> BOOKS TO KEEP. COURSES TO OPEN.</span>
-          <h1>Make room<br /><em>to grow.</em></h1>
-          <p>Thoughtful e-books to download and expert-led courses with convenient access to our private Google Drive library.</p>
-          <div className="hero-actions">
-            <button className="button button-gold" onClick={() => { setCategory('All products'); document.getElementById('discover')?.scrollIntoView({ behavior: 'smooth' }) }}>Explore the collection <Icon name="arrow" size={17} /></button>
-            <button className="hero-play-link" onClick={() => openCourse(featuredCourse)}><span className="play-ring"><Icon name="play" size={14} /></span> View featured course</button>
-          </div>
-        </div>
+      <section
+        ref={heroRef}
+        className="hero-section"
+        aria-label="Featured learning resources"
+        aria-roledescription="carousel"
+        data-lenis-prevent-wheel
+        onMouseEnter={() => setHeroPaused(true)}
+        onMouseLeave={() => setHeroPaused(false)}
+        onFocusCapture={() => setHeroPaused(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setHeroPaused(false)
+        }}
+      >
+        {featured.map((product, index) => {
+          const isEbook = product.type === 'ebook'
+          const isOwned = ownedProductIds.includes(product.id)
+          return (
+            <article className={`hero-slide${index === slide ? ' hero-slide-active' : ''}`} key={product.id} aria-hidden={index !== slide}>
+              <div className="hero-photo" style={{ backgroundImage: `url("${imageUrl(product.image, 1800)}")` }} />
+              <div className="hero-scrim" />
+              <div className="hero-content">
+                <span className="hero-kicker"><span className="kicker-sun"><Icon name="sun" size={14} /></span> FEATURED {isEbook ? 'E-BOOK' : 'COURSE'} <span>·</span> {product.category.toUpperCase()}</span>
+                <h1>{product.title}</h1>
+                <p>{isEbook
+                  ? `${product.pages} pages to explore at your own pace, written by ${product.instructor}.`
+                  : `${product.lessons} self-paced lessons with ${product.instructor}, made to help you keep learning.`}</p>
+                {featuredNotice && index === slide && <p className="hero-featured-notice" role="status">{featuredNotice}</p>}
+                <div className="hero-product-facts">
+                  <span>{isEbook ? `${product.pages} pages · ${product.fileFormat}` : `${product.hours} · ${product.lessons} lessons`}</span>
+                </div>
+                <div className="hero-actions">
+                  <button className="button button-gold" onClick={() => openCourse(product)}>View {isEbook ? 'e-book' : 'course'} <Icon name="arrow" size={17} /></button>
+                  <button className="hero-play-link" onClick={() => isOwned ? navigate('learn', product) : buyNow(product)}>
+                    <span className="play-ring"><Icon name={isOwned ? 'book' : 'bag'} size={14} /></span>
+                    {isOwned ? 'Open in my library' : 'Buy now'}
+                  </button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
         <div className="hero-bottom">
           <div className="hero-proof"><span>Books and courses for curious minds</span></div>
-          <div className="hero-dots" aria-label="Choose featured course">
-            {featured.map((course, index) => <button key={course.id} onClick={() => setSlide(index)} className={index === slide ? 'active' : ''} aria-label={`Show featured course ${index + 1}`} />)}
+          <div className="hero-dots" aria-label="Choose a featured product">
+            {featured.map((product, index) => <button key={product.id} onClick={() => setSlide(index)} className={index === slide ? 'active' : ''} aria-label={`Show featured ${product.type === 'ebook' ? 'e-book' : 'course'} ${index + 1}`} />)}
           </div>
-          <span className="hero-slide-count">0{slide + 1} <span>/</span> 0{featured.length}</span>
+          <div className="hero-controls">
+            <span className="hero-slide-count">0{slide + 1} <span>/</span> 0{featured.length}</span>
+            <button type="button" onClick={() => setSlide((current) => (current - 1 + featured.length) % featured.length)} aria-label="Previous featured product" disabled={featured.length < 2}><Icon name="chevronLeft" size={18} /></button>
+            <button type="button" onClick={() => setSlide((current) => (current + 1) % featured.length)} aria-label="Next featured product" disabled={featured.length < 2}><Icon name="chevron" size={18} /></button>
+          </div>
         </div>
       </section>
 
@@ -984,28 +1183,20 @@ function App() {
         {search || category !== 'All products' ? (
           <section className="course-section search-results">
             <div className="section-heading">
-              <div><p className="eyebrow">THE INFINIVIUM COLLECTION</p><h2>{search ? `Results for “${search}”` : category}</h2><p className="section-description">{filteredCourses.length} books and courses to explore.</p></div>
+              <div><p className="eyebrow">THE INFINIVIUM COLLECTION</p><h2>{search ? `Results for “${search}”` : category}</h2><p className="section-description">{search
+                ? `${filteredCourses.length} ${filteredCourses.length === 1 ? 'result' : 'results'}.`
+                : `${filteredCourses.length} ${category === 'Courses' ? 'courses' : category === 'E-books' ? 'e-books' : 'books and courses'} to browse.`}</p></div>
               <button className="text-link" onClick={() => { setSearch(''); setCategory('All products') }}>Clear filters <Icon name="close" size={16} /></button>
             </div>
-            {filteredCourses.length ? <div className="course-grid">{filteredCourses.map((course) => <ProductCard key={course.id} course={course} purchased={ownedProductIds.includes(course.id)} onOpen={openCourse} onAdd={addToCart} />)}</div> : <div className="empty-search"><span className="empty-icon"><Icon name="search" size={23} /></span><h3>Nothing found just yet</h3><p>Try a different search or browse the complete collection.</p><button className="button button-dark" onClick={() => { setSearch(''); setCategory('All products') }}>See everything</button></div>}
+            {filteredCourses.length ? <div className="course-grid">{filteredCourses.map((course) => <ProductCard key={course.id} course={course} ratingSummary={ratingSummaries[productRatingKey(course)]} purchased={ownedProductIds.includes(course.id)} onOpen={openCourse} onAdd={addToCart} />)}</div> : <div className="empty-search"><span className="empty-icon"><Icon name="search" size={23} /></span><h3>Nothing found just yet</h3><p>Try a different search or browse the complete collection.</p><button className="button button-dark" onClick={() => { setSearch(''); setCategory('All products') }}>See everything</button></div>}
           </section>
         ) : (
           <>
-            <ProductSection eyebrow="READ & KEEP" title="E-books for your next chapter" description="Downloadable guides and journals, ready to keep close." items={storefrontProducts.filter((product) => product.type === 'ebook').slice(0, 3)} owned={ownedProductIds} onOpen={openCourse} onAdd={addToCart} onExplore={() => { setCategory('E-books'); document.getElementById('discover')?.scrollIntoView({ behavior: 'smooth' }) }} />
-            <ProductSection eyebrow="WATCH & MAKE" title="Courses to follow your curiosity" description="Buy once, then open your course video links from your library." items={storefrontProducts.filter((product) => product.type === 'course').slice(0, 3)} owned={ownedProductIds} onOpen={openCourse} onAdd={addToCart} onExplore={() => { setCategory('Courses'); document.getElementById('discover')?.scrollIntoView({ behavior: 'smooth' }) }} />
+            <ProductSection eyebrow="READ & KEEP" title="E-books for your next chapter" description="Downloadable guides and journals, ready to keep close." items={storefrontProducts.filter((product) => product.type === 'ebook')} owned={ownedProductIds} ratingSummaries={ratingSummaries} onOpen={openCourse} onAdd={addToCart} />
+            <ProductSection eyebrow="WATCH & MAKE" title="Courses to follow your curiosity" description="Buy once, then open your course video links from your library." items={storefrontProducts.filter((product) => product.type === 'course')} owned={ownedProductIds} ratingSummaries={ratingSummaries} onOpen={openCourse} onAdd={addToCart} />
           </>
         )}
       </div>
-
-      <section className="newsletter" id="newsletter">
-        <div className="newsletter-sun"><Icon name="sun" size={27} /></div>
-        <div><p className="eyebrow">THE INFINIVIUM NEWSLETTER</p><h2>New reads and learning ideas.</h2><p>Get occasional updates about new e-books, courses, and learning resources.</p></div>
-        <form className="newsletter-form" onSubmit={(event) => { event.preventDefault(); setToast('You’re on the list. Look out for a little inspiration!'); event.currentTarget.reset() }}>
-          <label className="visually-hidden" htmlFor="newsletter-email">Your email address</label>
-          <input id="newsletter-email" type="email" placeholder="Your email address" required />
-          <button type="submit" aria-label="Subscribe"><Icon name="arrow" size={19} /></button>
-        </form>
-      </section>
     </>
   )
 
@@ -1014,7 +1205,7 @@ function App() {
       <div className="breadcrumb"><button onClick={() => navigate('home')}>Home</button><Icon name="chevron" size={14} /><span>Your cart</span></div>
       <div className="page-title-block"><p className="eyebrow">A GOOD CHOICE, EITHER WAY</p><h1>Your cart<span className="cart-title-count"> ({cartCourses.length})</span></h1><p>Keep the ones you’re considering. Choose what feels right when you’re ready.</p></div>
       {!cartCourses.length ? (
-        <div className="empty-cart"><span className="empty-icon"><Icon name="bag" size={24} /></span><h2>Your next favorite read or course is out there.</h2><p>Have a look around, and save a little inspiration for later.</p><button className="button button-dark" onClick={() => navigate('home')}>Explore the collection <Icon name="arrow" size={16} /></button></div>
+        <div className="empty-cart"><span className="empty-icon"><Icon name="bag" size={24} /></span><h2>Your next favorite read or course is out there.</h2><p>Have a look around, and save a little inspiration for later.</p><button className="button button-dark" onClick={() => navigate('home')}>Browse the collection <Icon name="arrow" size={16} /></button></div>
       ) : (
         <div className="cart-layout">
           <section className="cart-items" aria-label="Items in your cart">
@@ -1025,7 +1216,25 @@ function App() {
               <strong className="cart-item-price">{formatPrice(course.price)}</strong>
             </article>)}
           </section>
-          <aside className="order-summary"><p className="eyebrow">ORDER SUMMARY</p><h2>Order summary</h2><div className="summary-line"><span>Selected items</span><span>{checkoutCourses.length}</span></div><div className="summary-line"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div><div className="summary-line summary-total"><strong>Total</strong><strong>{formatPrice(subtotal)}</strong></div><button className="button button-dark checkout-button" disabled={!checkoutCourses.length} onClick={() => navigate('checkout')}>Pay {formatPrice(subtotal)} <Icon name="arrow" size={17} /></button><p className="summary-note">You’ll complete payment securely on Razorpay.</p><div className="secure-note">Secure Razorpay checkout</div></aside>
+          <aside className="order-summary"><p className="eyebrow">ORDER SUMMARY</p><h2>Order summary</h2><div className="summary-line"><span>Selected items</span><span>{checkoutCourses.length}</span></div><div className="summary-line"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div><div className="summary-line summary-total"><strong>Total</strong><strong>{formatPrice(subtotal)}</strong></div><SlideCommit
+            key={checkoutCourses.map((product) => product.id).join(':')}
+            label="Slide to checkout"
+            doneLabel="Opening checkout"
+            errorLabel="Could not continue"
+            onConfirm={() => Promise.resolve()}
+            onDone={() => { setDirectCheckoutProductId(null); navigate('checkout') }}
+            onError={(error) => { console.error('Could not continue to checkout', error); setToast('Could not continue to checkout. Please try again.') }}
+            trackColor="#ece9f0"
+            handleColor="#ffffff"
+            fillColor="#673ab7"
+            successColor="#673ab7"
+            dangerColor="#b42318"
+            width={252}
+            height={48}
+            radius={24}
+            holdMs={0}
+            disabled={!checkoutCourses.length}
+          /><p className="summary-note">You’ll complete payment securely on Razorpay.</p><div className="secure-note">Secure Razorpay checkout</div></aside>
         </div>
       )}
     </main>
@@ -1035,25 +1244,60 @@ function App() {
     const lessons = ['A warm welcome & what we’ll make', 'Finding the story in a brand', 'Gathering your visual inspiration', 'Putting your first idea on paper']
     const isEbook = selectedCourse.type === 'ebook'
     const alreadyOwned = ownedProductIds.includes(selectedCourse.id)
+    const productRatingSummary = ratingSummaries[productRatingKey(selectedCourse)]
+    const ratingAverageLabel = productRatingSummary ? Number(productRatingSummary.average_rating).toFixed(1) : '—'
+    const ratingCountLabel = productRatingSummary ? ` · ${productRatingSummary.rating_count} ratings` : ''
     return (
       <main className="inner-page">
         <div className="breadcrumb"><button onClick={() => navigate('home')}>Home</button><Icon name="chevron" size={14} /><button onClick={() => navigate('home')}>{selectedCourse.category}</button><Icon name="chevron" size={14} /><span>{isEbook ? 'E-book details' : 'Course details'}</span></div>
         <div className="detail-layout">
           <section className="detail-main">
             <p className="eyebrow">{isEbook ? 'E-BOOK' : 'COURSE'} <span>·</span> {selectedCourse.category.toUpperCase()} · {selectedCourse.level.toUpperCase()}</p>
-            <h1>{selectedCourse.title}</h1>
+            <div className="detail-title-row">
+              <h1>{selectedCourse.title}</h1>
+              <div className="detail-title-rating">
+                <PeekRating
+                  value={ratingValue}
+                  onChange={handleProductRatingChange}
+                  count={5}
+                  shape="star"
+                  labels={['Poor', 'Fair', 'Good', 'Great', 'Superb']}
+                  activeColor="#673ab7"
+                  idleColor="#b8b2c2"
+                  tipColor="#17151b"
+                  tipTextColor="#ffffff"
+                  size={22}
+                  lift={5}
+                  magnify={1.12}
+                  riseDuration={300}
+                  popScale={1.2}
+                  showTip={false}
+                  allowClear={false}
+                  disabled={ratingLoading || ratingSaving}
+                  ariaLabel="Your star rating"
+                />
+                <span className="detail-rating-summary">
+                  <strong>{ratingAverageLabel}</strong>
+                  {ratingCountLabel}
+                </span>
+              </div>
+            </div>
+            {ratingNotice && <div className={`detail-rating-feedback${ratingError ? ' detail-rating-feedback-error' : ''}`} role="status">
+              <span>{ratingNotice}</span>
+              {!session && <button type="button" onClick={() => { setAuthMode('login'); setAuthReturnPage('course'); navigate('auth') }}>Log in</button>}
+            </div>}
             <p className="detail-intro">{isEbook
               ? 'A practical digital book to read on your own schedule. After a confirmed purchase, download the file directly from your library.'
               : 'A practical, expert-led course to follow at your own pace. After a confirmed purchase, open the private Google Drive course links from your library.'}</p>
             <div className="detail-instructor"><span className="instructor-avatar">{selectedCourse.instructor.split(' ').map((part) => part[0]).join('')}</span><span>{isEbook ? 'Author' : 'Instructor'}: <strong>{selectedCourse.instructor}</strong></span></div>
             <div className="detail-cover"><img src={imageUrl(selectedCourse.image, 1200)} alt={selectedCourse.imageAlt} />{!isEbook && <span className="cover-play"><Icon name="play" size={21} /></span>}</div>
-            <div className="detail-stats"><span><Icon name="star" size={17} /><strong>{selectedCourse.rating}</strong> ({selectedCourse.reviews.toLocaleString()} reviews)</span>{isEbook ? <span><Icon name="book" size={17} /> {selectedCourse.pages} pages · {selectedCourse.fileFormat}</span> : <><span><Icon name="clock" size={17} /> {selectedCourse.hours}</span><span><Icon name="book" size={17} /> {selectedCourse.lessons} lessons</span></>}<span><Icon name="heart" size={17} /> {selectedCourse.students} {isEbook ? 'readers' : 'learners'}</span></div>
+            <div className="detail-stats">{isEbook ? <span><Icon name="book" size={17} /> {selectedCourse.pages} pages · {selectedCourse.fileFormat}</span> : <><span><Icon name="clock" size={17} /> {selectedCourse.hours}</span><span><Icon name="book" size={17} /> {selectedCourse.lessons} lessons</span></>}<span><Icon name="heart" size={17} /> {selectedCourse.students} {isEbook ? 'readers' : 'learners'}</span></div>
             <section className="about-class"><p className="eyebrow">{isEbook ? 'ABOUT THIS E-BOOK' : 'ABOUT THIS COURSE'}</p><h2>{isEbook ? 'A resource to return to' : 'Learn, then put it into practice'}</h2><p>{isEbook
               ? 'Keep the ideas and exercises close at hand. Your purchase includes access to a downloadable digital copy in your student library.'
               : 'Follow clear lessons and practical exercises designed to help you make progress. Course videos are hosted in a private Google Drive library and are opened through your student account.'}</p></section>
             {!isEbook && <section className="curriculum"><p className="eyebrow">COURSE CONTENT</p><h2>What’s inside</h2>{lessons.map((item, index) => <div className="lesson-preview" key={item}><span className="lesson-number">0{index + 1}</span><span>{item}</span><span className="lesson-duration">{index + 2}:30</span></div>)}</section>}
           </section>
-          <aside className="detail-sidebar"><p className="eyebrow">{isEbook ? 'E-BOOK PRICE' : 'COURSE PRICE'}</p><div className="detail-price">{formatPrice(selectedCourse.price)}</div><p className="sidebar-note">{isEbook ? 'One-time purchase · PDF download' : 'One-time purchase · Drive link access'}</p><button className="button button-dark detail-cta" onClick={() => alreadyOwned ? navigate('learn', selectedCourse) : addToCart(selectedCourse)}>{alreadyOwned ? <><Icon name={isEbook ? 'book' : 'arrow'} size={16} /> {isEbook ? 'Open my e-book' : 'Open my course'}</> : <>Add to cart <Icon name="arrow" size={16} /></>}</button><p className="sidebar-includes">{isEbook ? 'Your e-book includes' : 'Your course includes'}</p><ul>{isEbook ? <><li><Icon name="check" size={16} /> {selectedCourse.pages} pages in PDF format</li><li><Icon name="check" size={16} /> Download from your library</li><li><Icon name="check" size={16} /> Read on your own device</li></> : <><li><Icon name="check" size={16} /> Course video links in Google Drive</li><li><Icon name="check" size={16} /> Access from your student library</li><li><Icon name="check" size={16} /> Learn on your own schedule</li></>}</ul></aside>
+          <aside className="detail-sidebar"><p className="eyebrow">{isEbook ? 'E-BOOK PRICE' : 'COURSE PRICE'}</p><div className="detail-price">{formatPrice(selectedCourse.price)}</div><p className="sidebar-note">{isEbook ? 'One-time purchase · PDF download' : 'One-time purchase · Drive link access'}</p>{alreadyOwned ? <button className="button button-dark detail-cta" onClick={() => navigate('learn', selectedCourse)}><Icon name={isEbook ? 'book' : 'arrow'} size={16} /> {isEbook ? 'Open my e-book' : 'Open my course'}</button> : <div className="detail-actions"><button className="button button-outline detail-cta" onClick={() => addToCart(selectedCourse)}>Add to cart</button><button className="button button-dark detail-cta" onClick={() => buyNow(selectedCourse)}>Buy now <Icon name="arrow" size={16} /></button></div>}<p className="sidebar-includes">{isEbook ? 'Your e-book includes' : 'Your course includes'}</p><ul>{isEbook ? <><li><Icon name="check" size={16} /> {selectedCourse.pages} pages in PDF format</li><li><Icon name="check" size={16} /> Download from your library</li><li><Icon name="check" size={16} /> Read on your own device</li></> : <><li><Icon name="check" size={16} /> Course video links in Google Drive</li><li><Icon name="check" size={16} /> Access from your student library</li><li><Icon name="check" size={16} /> Learn on your own schedule</li></>}</ul></aside>
         </div>
       </main>
     )
@@ -1208,7 +1452,7 @@ function App() {
         {currentEnrollmentsLoading ? <p className="loading-note" role="status"><span className="loading-spinner" aria-hidden="true" /> Gathering your books and courses…</p>
           : currentEnrollmentsError ? <Notice variant="error" title="Your library is taking a moment" action={<button className="notice-action-button" type="button" onClick={() => setLibraryRefreshKey((key) => key + 1)}>Try again</button>}>{currentEnrollmentsError}</Notice>
             : myProducts.length ? <div className="course-grid library-grid">{myProducts.map((product) => <ProductCard key={product.id} course={product} purchased onOpen={openCourse} onAdd={addToCart} />)}</div>
-              : <div className="empty-cart"><span className="empty-icon"><Icon name="book" size={24} /></span><h2>A library with room to grow.</h2><p>Your purchased e-books and course links will appear here once a payment is confirmed.</p><button className="button button-dark" onClick={() => navigate('home')}>Explore the collection <Icon name="arrow" size={16} /></button></div>}
+              : <div className="empty-cart"><span className="empty-icon"><Icon name="book" size={24} /></span><h2>A library with room to grow.</h2><p>Your purchased e-books and course links will appear here once a payment is confirmed.</p><button className="button button-dark" onClick={() => navigate('home')}>Browse the collection <Icon name="arrow" size={16} /></button></div>}
       </main>
     )
   }
@@ -1227,11 +1471,6 @@ function App() {
       <div className="header-top-strip" />
       <header className="site-header">
         <button className="brand" onClick={() => navigate('home')} aria-label="Infinivium home"><img className="brand-logo" src="/infinivium-logo.png" alt="" /></button>
-        <button className="mobile-menu-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}><Icon name={mobileMenuOpen ? 'close' : 'menu'} size={22} /></button>
-        <nav className={`main-nav${mobileMenuOpen ? ' nav-open' : ''}`} aria-label="Main navigation">
-          <button className={page === 'home' ? 'nav-active' : ''} onClick={() => navigate('home')}>Explore</button>
-          <button onClick={navigateToSubscribe}>Subscribe</button>
-        </nav>
         <div className="search-field">
           <Icon name="search" size={18} />
           <label className="visually-hidden" htmlFor="site-search">Search books and courses</label>
@@ -1249,7 +1488,7 @@ function App() {
           )}
         </div>
         <div className="header-actions">
-          <button className="cart-button" onClick={() => navigate('cart')} aria-label={`Cart${cart.length ? `, ${cart.length} items` : ''}`}><Icon name="cart" size={20} />{cart.length > 0 && <i>{cart.length}</i>}</button>
+          <button className="cart-button" onClick={() => navigate('cart')} aria-label={`Cart${cart.length ? `, ${cart.length} items` : ''}`}><span key={cartPulse} className={cartPulse ? 'cart-pop-icon' : ''}><Icon name="cart" size={20} /></span>{cart.length > 0 && <i>{cart.length}</i>}</button>
           {session ? <button className="header-auth-button" onClick={signOut}>Log out</button> : <>
             <button className="header-auth-button" onClick={() => { setAuthMode('login'); setAuthReturnPage('home'); navigate('auth') }}>Log in</button>
             <button className="header-signup-button" onClick={() => { setAuthMode('signup'); setAuthReturnPage('home'); setPage('auth') }}>Sign up</button>
@@ -1286,7 +1525,7 @@ function App() {
       <footer className="site-footer">
         <div className="footer-main">
           <div className="footer-brand-block"><button className="brand footer-brand" onClick={() => navigate('home')} aria-label="Infinivium home"><img className="brand-logo" src="/infinivium-logo.png" alt="" /></button><p>Find a new idea.<br />Make room to grow.</p></div>
-          <div className="footer-column"><p className="footer-heading">A good place to start</p><button onClick={() => navigate('home')}>Explore the collection</button><button onClick={() => navigate('library')}>My library</button><button onClick={() => navigate('cart')}>Your cart</button></div>
+          <div className="footer-column"><p className="footer-heading">A good place to start</p><button onClick={() => navigate('home')}>Browse the collection</button><button onClick={() => navigate('library')}>My library</button><button onClick={() => navigate('cart')}>Your cart</button></div>
           <div className="footer-column"><p className="footer-heading">A little hello</p><a href="mailto:hello@infinivium.com">Get in touch</a><a href="https://www.instagram.com/" target="_blank" rel="noreferrer">Instagram <span>↗</span></a><a href="https://www.facebook.com/" target="_blank" rel="noreferrer">Facebook <span>↗</span></a><a href="https://www.youtube.com/" target="_blank" rel="noreferrer">YouTube <span>↗</span></a></div>
           <div className="footer-note"><span className="footer-sun"><Icon name="sun" size={22} /></span><p>Here’s to a life<br />of always learning.</p></div>
         </div>

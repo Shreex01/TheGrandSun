@@ -28,26 +28,52 @@ function ProfilePage({ user, onSignOut }) {
     const loadProfile = async () => {
       try {
         if (!supabase) throw new Error('Your profile is not connected yet. Please try again later.')
-        const { data, error: profileError } = await supabase
+        let { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('username,gender,avatar_path')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
         if (profileError) throw profileError
 
+        if (!profile) {
+          const { data: createdProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({ user_id: user.id })
+            .select('username,gender,avatar_path')
+            .single()
+          if (createError?.code === '23505') {
+            const { data: existingProfile, error: reloadError } = await supabase
+              .from('profiles')
+              .select('username,gender,avatar_path')
+              .eq('user_id', user.id)
+              .maybeSingle()
+            if (reloadError) throw reloadError
+            profile = existingProfile
+          } else {
+            if (createError) throw createError
+            profile = createdProfile
+          }
+        }
+        if (!profile) throw new Error('We couldn’t create your profile. Please try again in a moment.')
+
         let signedAvatarUrl = ''
-        if (data.avatar_path) {
+        let avatarWarning = ''
+        if (profile.avatar_path) {
           const { data: signedAvatar, error: avatarError } = await supabase.storage
             .from('avatars')
-            .createSignedUrl(data.avatar_path, 3600)
-          if (avatarError) throw avatarError
-          signedAvatarUrl = signedAvatar.signedUrl
+            .createSignedUrl(profile.avatar_path, 3600)
+          if (avatarError) {
+            avatarWarning = 'Your profile loaded, but we couldn’t load your profile photo. You can upload it again.'
+          } else {
+            signedAvatarUrl = signedAvatar.signedUrl
+          }
         }
         if (!active) return
-        setUsername(data.username ?? '')
-        setGender(data.gender ?? '')
-        setAvatarPath(data.avatar_path ?? '')
+        setUsername(profile.username ?? '')
+        setGender(profile.gender ?? '')
+        setAvatarPath(profile.avatar_path ?? '')
         setAvatarUrl(signedAvatarUrl)
+        if (avatarWarning) setError(avatarWarning)
       } catch (requestError) {
         if (active) setError(friendlyMessage(requestError, 'account'))
       } finally {

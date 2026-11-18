@@ -25,6 +25,9 @@ Apply these migrations in order in the Supabase SQL Editor:
 7. [`supabase/migrations/20261114100000_public_catalog_anon_policy_fix.sql`](./supabase/migrations/20261114100000_public_catalog_anon_policy_fix.sql)
 8. [`supabase/migrations/20261114120000_razorpay_standard_checkout.sql`](./supabase/migrations/20261114120000_razorpay_standard_checkout.sql)
 9. [`supabase/migrations/20261115000000_student_profile_settings.sql`](./supabase/migrations/20261115000000_student_profile_settings.sql)
+10. [`supabase/migrations/20261116000000_profile_row_recovery.sql`](./supabase/migrations/20261116000000_profile_row_recovery.sql)
+11. [`supabase/migrations/20261117000000_popular_featured_products.sql`](./supabase/migrations/20261117000000_popular_featured_products.sql)
+12. [`supabase/migrations/20261118000000_product_ratings.sql`](./supabase/migrations/20261118000000_product_ratings.sql)
 
 In Supabase Authentication → URL Configuration, set the Site URL to `https://infinivium.com` and add the production URL (and any preview URLs you use) to the Redirect URLs allowlist. Add `http://localhost:5173/**` only for local development. Password-reset and confirmation emails return to the origin where the request was made, so request production resets from `https://infinivium.com`; links requested from localhost return to localhost. Configure an SMTP provider before production use.
 
