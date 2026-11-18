@@ -3,7 +3,9 @@ import './App.css'
 import './polish.css'
 import AdminPage from './AdminPage.jsx'
 import AuthPage from './AuthPage.jsx'
+import ProfilePage from './ProfilePage.jsx'
 import Notice from './components/Notice.jsx'
+import HoldButton from './components/HoldButton.jsx'
 import { supabase } from './lib/supabase.js'
 import { mapCatalogRows } from './lib/catalog.js'
 import { friendlyMessage } from './lib/messages.js'
@@ -184,6 +186,7 @@ function readRoute() {
   if (segments[0] === 'signup') return { page: 'auth', authMode: 'signup' }
   if (segments[0] === 'login') return { page: 'auth', authMode: 'login' }
   if (segments[0] === 'cart') return { page: 'cart' }
+  if (segments[0] === 'profile') return { page: 'profile' }
   if (segments[0] === 'studio' || segments[0] === 'admin') return { page: 'admin' }
   if (segments[0] === 'checkout') return { page: 'checkout' }
   if (segments[0] === 'payment-return') {
@@ -211,6 +214,7 @@ function routePath(page, authMode, productId, paymentOrderId) {
   const routes = {
     home: '/',
     cart: '/cart',
+    profile: '/profile',
     checkout: '/checkout',
     library: '/library',
     admin: '/studio',
@@ -238,6 +242,7 @@ function Icon({ name, size = 20 }) {
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
     star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
     sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></>,
+    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>,
   }
   return (
     <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -261,13 +266,30 @@ function ProductCard({ course, purchased, onOpen, onAdd }) {
         <div className="course-rating"><Icon name="star" size={15} /><strong>{course.rating}</strong><span>({course.reviews.toLocaleString()})</span></div>
         <div className="course-card-bottom">
           <strong className="course-price">{formatPrice(course.price)}</strong>
-          <button
-            className={`add-course-button${purchased ? ' is-owned' : ''}`}
-            onClick={() => purchased ? onOpen(course) : onAdd(course)}
-            aria-label={purchased ? `${isEbook ? 'Download' : 'Open'} ${course.title}` : `Add ${course.title} to cart`}
-          >
-            {purchased ? <><Icon name={isEbook ? 'book' : 'arrow'} size={15} /> {isEbook ? 'Get book' : 'Open'}</> : <Icon name="plus" size={18} />}
-          </button>
+          {purchased ? (
+            <button
+              className="add-course-button is-owned"
+              onClick={() => onOpen(course)}
+              aria-label={`${isEbook ? 'Download' : 'Open'} ${course.title}`}
+            >
+              <Icon name={isEbook ? 'book' : 'arrow'} size={15} /> {isEbook ? 'Get book' : 'Open'}
+            </button>
+          ) : (
+            <HoldButton
+              className="course-add-hold-button"
+              ariaLabel={`Hold to add ${course.title} to cart`}
+              doneLabel="Added"
+              backgroundColor="#fff"
+              fillColor="#7441c8"
+              textColor="#7441c8"
+              fillTextColor="#fff"
+              size="sm"
+              radius={8}
+              onHold={() => onAdd(course)}
+            >
+              Add to cart
+            </HoldButton>
+          )}
         </div>
       </div>
     </article>
@@ -632,7 +654,7 @@ function App() {
     }
   }, [page, selectedCourse.type, selectedCourseId, readerPage])
   useEffect(() => {
-    if (!authReady || session || !['library', 'learn', 'checkout', 'payment-return'].includes(page)) return
+    if (!authReady || session || !['library', 'learn', 'checkout', 'payment-return', 'profile'].includes(page)) return
     setAuthReturnPage(page === 'learn' ? 'library' : page)
     setAuthMode('login')
     setPage('auth')
@@ -704,7 +726,7 @@ function App() {
   }, [toast])
 
   const navigate = (nextPage, course) => {
-    if ((nextPage === 'library' || nextPage === 'learn' || nextPage === 'checkout' || nextPage === 'admin') && !session) {
+    if ((nextPage === 'library' || nextPage === 'learn' || nextPage === 'checkout' || nextPage === 'admin' || nextPage === 'profile') && !session) {
       setAuthReturnPage(nextPage === 'learn' ? 'library' : nextPage)
       setAuthMode('login')
       setPage('auth')
@@ -978,7 +1000,7 @@ function App() {
               <strong className="cart-item-price">{formatPrice(course.price)}</strong>
             </article>)}
           </section>
-          <aside className="order-summary"><p className="eyebrow">ORDER SUMMARY</p><h2>Order summary</h2><div className="summary-line"><span>Selected items</span><span>{checkoutCourses.length}</span></div><div className="summary-line"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div><div className="summary-line summary-total"><strong>Total</strong><strong>{formatPrice(subtotal)}</strong></div><button className="button button-dark checkout-button" disabled={!checkoutCourses.length} onClick={() => navigate('checkout')}>Continue with Razorpay <Icon name="arrow" size={17} /></button><p className="summary-note">You’ll complete payment securely on Razorpay.</p><div className="secure-note">Secure Razorpay checkout</div></aside>
+          <aside className="order-summary"><p className="eyebrow">ORDER SUMMARY</p><h2>Order summary</h2><div className="summary-line"><span>Selected items</span><span>{checkoutCourses.length}</span></div><div className="summary-line"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div><div className="summary-line summary-total"><strong>Total</strong><strong>{formatPrice(subtotal)}</strong></div><button className="button button-dark checkout-button" disabled={!checkoutCourses.length} onClick={() => navigate('checkout')}>Pay {formatPrice(subtotal)} <Icon name="arrow" size={17} /></button><p className="summary-note">You’ll complete payment securely on Razorpay.</p><div className="secure-note">Secure Razorpay checkout</div></aside>
         </div>
       )}
     </main>
@@ -1044,7 +1066,6 @@ function App() {
             <Notice
               variant="error"
               title="Let’s sort that out"
-              action={<a className="notice-action-link" href="mailto:hello@infinivium.com">Contact us</a>}
             >
               {paymentError}
             </Notice>
@@ -1171,7 +1192,10 @@ function App() {
     ? adminAccess
       ? <AdminPage email={session?.user.email ?? ''} onBack={() => setPage('home')} onSignOut={signOut} onCatalogChanged={refreshCatalog} />
       : <main className="admin-page"><p role="status">Verifying administrator access…</p></main>
-    : page === 'auth' ? <AuthPage initialMode={authMode} onModeChange={setAuthMode} onAuthenticated={finishAuthentication} /> : page === 'home' ? renderHome() : page === 'cart' ? renderCart() : page === 'checkout' ? renderCheckout() : page === 'payment-return' ? renderPaymentReturn() : page === 'course' ? renderCourseDetails() : page === 'learn' ? renderLearning() : renderLibrary()
+    : page === 'profile' ? session
+      ? <ProfilePage key={`${session.user.id}:${session.user.email}`} user={session.user} onSignOut={signOut} />
+      : <main className="profile-page"><p className="profile-loading" role="status">Checking your account…</p></main>
+      : page === 'auth' ? <AuthPage initialMode={authMode} onModeChange={setAuthMode} onAuthenticated={finishAuthentication} /> : page === 'home' ? renderHome() : page === 'cart' ? renderCart() : page === 'checkout' ? renderCheckout() : page === 'payment-return' ? renderPaymentReturn() : page === 'course' ? renderCourseDetails() : page === 'learn' ? renderLearning() : renderLibrary()
   return (
     <div className={`site-shell${page === 'admin' ? ' admin-shell' : ''}`}>
       {page !== 'admin' && <>
@@ -1200,13 +1224,12 @@ function App() {
           )}
         </div>
         <div className="header-actions">
-          <button className="header-secondary-link" onClick={() => setToast('Infinivium Business is coming soon.')}>Infinivium Business</button>
           <button className="cart-button" onClick={() => navigate('cart')} aria-label={`Cart${cart.length ? `, ${cart.length} items` : ''}`}><Icon name="cart" size={20} />{cart.length > 0 && <i>{cart.length}</i>}</button>
           {session ? <button className="header-auth-button" onClick={signOut}>Log out</button> : <>
             <button className="header-auth-button" onClick={() => { setAuthMode('login'); setAuthReturnPage('home'); navigate('auth') }}>Log in</button>
             <button className="header-signup-button" onClick={() => { setAuthMode('signup'); setAuthReturnPage('home'); setPage('auth') }}>Sign up</button>
           </>}
-          <button className="language-button" aria-label="Choose language" onClick={() => setToast('More languages are coming soon.')}><Icon name="globe" size={19} /></button>
+          <button className={`profile-button${page === 'profile' ? ' profile-button-active' : ''}`} onClick={() => navigate('profile')} aria-label="Open profile"><Icon name="user" size={17} />Profile</button>
         </div>
       </header>
       <div className="mobile-search">

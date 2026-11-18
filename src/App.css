@@ -524,13 +524,13 @@ button { border: 0; background: none; cursor: pointer; }
 .footer-bottom { border-color: #45414b; }
 .footer-heart { color: #d7c2fa; }
 
-.brand-logo { width: 62px; height: 62px; display: block; flex: 0 0 auto; object-fit: contain; }
-.footer-brand .brand-logo { width: 76px; height: 76px; }
+.brand-logo { width: 54px; height: 54px; display: block; flex: 0 0 auto; object-fit: contain; }
+.footer-brand .brand-logo { width: 64px; height: 64px; }
 .footer-brand-block > p { margin-left: 0; }
 
 @media (max-width: 700px) {
-  .brand-logo { width: 50px; height: 50px; }
-  .footer-brand .brand-logo { width: 68px; height: 68px; }
+  .brand-logo { width: 44px; height: 44px; }
+  .footer-brand .brand-logo { width: 56px; height: 56px; }
 }
 .cart-item-price, .course-price, .detail-price { color: #17151b; }
 .custom-checkbox { border-color: #aaa5b3; }
@@ -722,15 +722,12 @@ button { border: 0; background: none; cursor: pointer; }
   .search-field { width: auto; max-width: 580px; height: 48px; flex: 1 1 300px; margin: 0 2px; padding: 0 15px; border-color: #d3cfdb; border-radius: 26px; }
   .search-field input { font-size: 13px; }
   .header-actions { flex: 0 0 auto; gap: 14px; }
-  .header-secondary-link { padding: 6px 0; color: #4b4653; font-size: 12px; white-space: nowrap; }
-  .header-secondary-link:hover { color: #673ab7; }
   .cart-button { width: 30px; height: 38px; justify-content: center; padding: 0; color: #302c35; }
   .cart-button i { top: 0; left: 17px; }
-  .header-auth-button, .header-signup-button, .language-button { min-height: 40px; padding: 0 15px; border: 1px solid #673ab7; border-radius: 8px; color: #512da8; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .header-auth-button, .header-signup-button, .profile-button { min-height: 40px; padding: 0 15px; border: 1px solid #673ab7; border-radius: 8px; color: #512da8; font-size: 12px; font-weight: 700; white-space: nowrap; }
   .header-signup-button { background: #673ab7; color: #fff; }
   .header-signup-button:hover { background: #512da8; }
-  .language-button { width: 40px; display: grid; place-items: center; padding: 0; border-color: #d3cfdb; color: #34303a; }
-  .header-auth-button:hover, .language-button:hover { background: #f5f2f8; }
+  .header-auth-button:hover, .profile-button:hover { background: #f5f2f8; }
   .header-top-strip, .site-header { position: relative; z-index: 4; }
   .payment-page { min-height: 65vh; }
   .payment-status-card { width: min(100%, 620px); margin: 55px auto; padding: 34px; border: 1px solid #e7e5eb; background: #fff; text-align: center; }
@@ -747,12 +744,10 @@ button { border: 0; background: none; cursor: pointer; }
   @media (max-width: 1200px) {
     .site-header { gap: 17px; padding: 0 17px; }
     .header-actions { gap: 10px; }
-    .header-secondary-link { font-size: 11px; }
     .header-auth-button, .header-signup-button { padding: 0 11px; }
   }
 
   @media (max-width: 980px) {
-    .header-secondary-link { display: none; }
   }
 
   @media (max-width: 700px) {
@@ -766,8 +761,7 @@ button { border: 0; background: none; cursor: pointer; }
     .search-field { display: none; }
     .header-actions { gap: 6px; }
     .cart-button { width: 29px; }
-    .header-auth-button, .header-signup-button { min-height: 36px; padding: 0 9px; font-size: 10px; }
-    .language-button { width: 35px; min-height: 36px; }
+    .header-auth-button, .header-signup-button, .profile-button { min-height: 36px; padding: 0 9px; font-size: 10px; }
     .admin-product-row { grid-template-columns: 40px minmax(0,1fr) auto auto; }
     .admin-remove-button { grid-column: 2 / -1; justify-self: end; }
     .payment-status-card { margin: 30px auto; padding: 25px 18px; }

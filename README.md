@@ -24,8 +24,11 @@ Apply these migrations in order in the Supabase SQL Editor:
 6. [`supabase/migrations/20261114000000_course_lessons.sql`](./supabase/migrations/20261114000000_course_lessons.sql)
 7. [`supabase/migrations/20261114100000_public_catalog_anon_policy_fix.sql`](./supabase/migrations/20261114100000_public_catalog_anon_policy_fix.sql)
 8. [`supabase/migrations/20261114120000_razorpay_standard_checkout.sql`](./supabase/migrations/20261114120000_razorpay_standard_checkout.sql)
+9. [`supabase/migrations/20261115000000_student_profile_settings.sql`](./supabase/migrations/20261115000000_student_profile_settings.sql)
 
 In Supabase Authentication → URL Configuration, set the Site URL to `https://infinivium.com` and add the production URL (and any preview URLs you use) to the Redirect URLs allowlist. Add `http://localhost:5173/**` only for local development. Password-reset and confirmation emails return to the origin where the request was made, so request production resets from `https://infinivium.com`; links requested from localhost return to localhost. Configure an SMTP provider before production use.
+
+The profile settings page requires migration 9. It stores profile photos in a private `avatars` bucket, validates usernames for uniqueness, and uses Supabase Auth's email-change confirmation flow.
 
 ### Grant administrator access
 
@@ -80,6 +83,7 @@ The existing Payment Link webhook endpoint has JWT verification disabled in `sup
 - `/studio` — administrator-only product studio (direct URL, not shown to students)
 - `/library` — purchased e-books and courses
 - `/library/<product-id>` — the purchased e-book reader or course playlist
+- `/profile` — signed-in profile picture, username, gender, and email settings
 
 ## Scripts
 
