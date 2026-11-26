@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Notice from './components/Notice.jsx'
 import { isSupabaseConfigured, supabase } from './lib/supabase.js'
 import { friendlyError } from './lib/messages.js'
@@ -130,6 +130,7 @@ function AuthPage({ initialMode, onAuthenticated, onModeChange, onSignupSuccess 
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
   const [busy, setBusy] = useState(false)
+  const preserveFeedbackOnModeChange = useRef(false)
 
   const passwordCheck = useMemo(
     () => evaluatePassword(password, { email, name: fullName }),
@@ -153,14 +154,20 @@ function AuthPage({ initialMode, onAuthenticated, onModeChange, onSignupSuccess 
 
   useEffect(() => {
     setMode(initialMode)
+    if (preserveFeedbackOnModeChange.current) {
+      preserveFeedbackOnModeChange.current = false
+      resetPasswords()
+      return
+    }
     clearFeedback()
     resetPasswords()
   }, [initialMode])
 
-  const changeMode = (nextMode) => {
+  const changeMode = (nextMode, { preserveFeedback = false } = {}) => {
+    preserveFeedbackOnModeChange.current = preserveFeedback
     setMode(nextMode)
     onModeChange(nextMode)
-    clearFeedback()
+    if (!preserveFeedback) clearFeedback()
     resetPasswords()
   }
 
@@ -254,7 +261,7 @@ function AuthPage({ initialMode, onAuthenticated, onModeChange, onSignupSuccess 
       } else {
         result = await supabase.auth.updateUser({ password })
         if (!result.error) {
-          changeMode('login')
+          changeMode('login', { preserveFeedback: true })
           showSuccess('Your password is updated', 'Sign in with your new password whenever you’re ready.')
           return
         }

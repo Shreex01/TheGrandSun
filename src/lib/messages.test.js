@@ -81,6 +81,12 @@ test('explains password requirements without technical language', () => {
   assert.match(update, /nine characters/i)
 })
 
+test('guides users to request a fresh link when password recovery expires', () => {
+  const recoveryError = new Error('Email link is invalid or has expired')
+  assert.match(friendlyMessage(recoveryError, 'reset'), /request a fresh link/i)
+  assert.match(friendlyMessage(new Error('Auth session missing'), 'updatePassword'), /request a fresh link/i)
+})
+
 test('payment problems reassure the customer that nothing was charged', () => {
   const declined = friendlyError(new Error('card declined'), 'payment')
   assert.match(declined.message, /nothing has been charged/i)

@@ -10,7 +10,7 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` using the values in Supabase **Project Settings → API**. Set `VITE_RAZORPAY_KEY_ID` to your Razorpay test Key ID in `.env` or `.env.local`. Restart Vite after changing environment variables. Do not put service-role keys, Razorpay Key Secrets, or webhook secrets in variables prefixed with `VITE_`.
+Replace the Supabase placeholders in `.env.local` with the project URL and publishable/anon key from Supabase **Project Settings → API**. The example values are not usable credentials. Set `VITE_RAZORPAY_KEY_ID` to your Razorpay test Key ID in `.env` or `.env.local`. Restart Vite after changing environment variables. Do not put service-role keys, Razorpay Key Secrets, or webhook secrets in variables prefixed with `VITE_`.
 
 ## Supabase setup
 
@@ -28,14 +28,15 @@ Apply these migrations in order in the Supabase SQL Editor:
 10. [`supabase/migrations/20261116000000_profile_row_recovery.sql`](./supabase/migrations/20261116000000_profile_row_recovery.sql)
 11. [`supabase/migrations/20261117000000_popular_featured_products.sql`](./supabase/migrations/20261117000000_popular_featured_products.sql)
 12. [`supabase/migrations/20261118000000_product_ratings.sql`](./supabase/migrations/20261118000000_product_ratings.sql)
+13. [`supabase/migrations/20261119000000_product_content_fields.sql`](./supabase/migrations/20261119000000_product_content_fields.sql)
 
-In Supabase Authentication → URL Configuration, set the Site URL to `https://infinivium.com` and add the production URL (and any preview URLs you use) to the Redirect URLs allowlist. Add `http://localhost:5173/**` only for local development. Password-reset and confirmation emails return to the origin where the request was made, so request production resets from `https://infinivium.com`; links requested from localhost return to localhost. Configure an SMTP provider before production use.
+In Supabase Authentication → URL Configuration, set the Site URL to `https://infinivium.com` and add `https://infinivium.com/**` (and any preview URLs you use) to the Redirect URLs allowlist. Add `http://localhost:5173/**` only for local development. Password-reset and confirmation emails return to the origin where the request was made, so request production resets from `https://infinivium.com`; links requested from localhost return to localhost. If a link is expired or reports an invalid link, return to the production sign-in page and request a fresh one. Configure a working SMTP provider before production use, and check its delivery logs if messages do not arrive. The admin must sign in with the email/password for a user in this same Supabase project; dashboard credentials are separate.
 
 The profile settings page requires migration 9. It stores profile photos in a private `avatars` bucket, validates usernames for uniqueness, and uses Supabase Auth's email-change confirmation flow.
 
 ### Grant administrator access
 
-Create and verify your user account, then grant your account the administrator role from the Supabase SQL Editor (replace the example email):
+Create and verify each administrator's user account, then grant the administrator role from the Supabase SQL Editor (replace the example email). To add another administrator, first have that person create and verify an account using the site's sign-up page, then run this query for their exact account email:
 
 ```sql
 insert into public.admin_users (user_id)
@@ -43,7 +44,7 @@ select id from auth.users where lower(email) = lower('you@example.com')
 on conflict (user_id) do nothing;
 ```
 
-Sign out and back in, then visit `/studio` directly to open the protected admin product studio. The route is not linked in the student-facing storefront; access is still enforced by the admin role. It can add/edit products, upload PDFs, manage course lessons (titles, optional thumbnails, and individual Drive links), publish products, and remove products from the storefront. Removing a listing unpublishes it; existing buyers retain their entitlements and the product's records are not deleted.
+Sign out and back in, then visit `/studio` directly to open the protected admin product studio. The route is not linked in the student-facing storefront; access is still enforced by the admin role. It can add/edit products, upload public storefront covers and private e-book PDFs, manage product descriptions and course lessons (titles, optional thumbnails, and individual Drive links), publish products, and unpublish listings. Unpublishing does not revoke existing buyers' entitlements or delete the product's records.
 
 The `admin_users` table has no browser read/write policies. Only a trusted Supabase database administrator can grant or revoke administrator roles.
 
@@ -51,6 +52,7 @@ Admins can use the checkout preview wall to preview purchased-product delivery w
 
 ### E-book files and course links
 
+- Product cover images are stored in the public Supabase Storage bucket named `product-covers` so they can appear in the storefront. The bucket accepts JPEG, PNG, and WebP files up to 5 MB; only administrators can upload, replace, or remove them.
 - E-books are stored in the private Supabase Storage bucket named `ebooks`. Upload/manage PDFs in the admin studio. Only recorded purchasers and admins can read the files.
 - Add each course recording as a lesson in the admin studio. Only enrolled students and admins can read lesson links. Configure Drive sharing carefully; recipients may be able to forward a Drive link.
 - Purchased e-books open in the in-site PDF reader with page navigation and light/dark reader themes. Purchased courses open as an ordered playlist, with each lesson opening its Google Drive recording.

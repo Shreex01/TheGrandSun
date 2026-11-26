@@ -10,6 +10,8 @@ export function mapCatalogRows(courseRows, ebookRows, seedProducts = []) {
       title: row.title,
       category: row.category,
       instructor: isEbook ? row.author : row.instructor,
+      description: row.description ?? '',
+      coverPath: row.cover_path ?? '',
       price: row.price_inr,
       published: row.published,
       rating: seed?.rating ?? 'New',
@@ -29,6 +31,24 @@ export function mapCatalogRows(courseRows, ebookRows, seedProducts = []) {
     ...ebookRows.map((row) => withDefaults(row, 'ebook')),
     ...courseRows.map((row) => withDefaults(row, 'course')),
   ]
+}
+
+export function createProductIdFromTitle(title) {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+export function isValidHttpsImageUrl(value) {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export function isValidProductCoverFile(file) {
+  return Boolean(file
+    && ['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+    && file.size <= 5 * 1024 * 1024)
 }
 
 export function isValidProductId(value) {

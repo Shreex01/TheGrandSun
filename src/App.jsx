@@ -177,6 +177,9 @@ const demoProducts = [
 const categories = ['All products', 'E-books', 'Courses', 'Design', 'Photography', 'Lifestyle', 'Wellness', 'Art']
 const imageUrl = (id, width = 720) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=85`
+const productImageUrl = (product, width = 720) => product.coverPath && supabase
+  ? supabase.storage.from('product-covers').getPublicUrl(product.coverPath).data.publicUrl
+  : imageUrl(product.image, width)
 const productRatingKey = (product) => `${product.type ?? 'course'}:${product.id}`
 const formatPrice = (amount) =>
   new Intl.NumberFormat('en-IN', {
@@ -265,7 +268,7 @@ function ProductCard({ course, ratingSummary, purchased, onOpen, onAdd }) {
   return (
     <article className="course-card">
       <button className="course-image-button" onClick={() => onOpen(course)} aria-label={`View ${course.title}`}>
-        <img className="course-image" src={imageUrl(course.image)} alt={course.imageAlt} />
+        <img className="course-image" src={productImageUrl(course)} alt={course.coverPath ? `${course.title} cover` : course.imageAlt} />
         <span className="course-tag">{isEbook ? 'E-book' : 'Course'} · {course.tag}</span>
         <span className="course-rating-badge" aria-label={ratingSummary ? `${rating} out of 5 stars, ${ratingSummary.rating_count} ratings` : 'No rating data available'}>
           <strong>{rating}</strong><HugeiconsIcon icon={StarIcon} size={14} fill="currentColor" strokeWidth={1.5} />
@@ -423,8 +426,8 @@ function App() {
     }
 
     const [courseResult, ebookResult, popularResult] = await Promise.all([
-      supabase.from('courses').select('id,title,category,instructor,price_inr,published').order('title'),
-      supabase.from('ebooks').select('id,title,category,author,price_inr,pages,file_format,published').order('title'),
+      supabase.from('courses').select('id,title,category,instructor,description,cover_path,price_inr,published').order('title'),
+      supabase.from('ebooks').select('id,title,category,author,description,cover_path,price_inr,pages,file_format,published').order('title'),
       supabase.rpc('get_popular_products'),
     ])
     if (requestId !== catalogRequestId.current) return
@@ -480,7 +483,9 @@ function App() {
     return () => lenis.destroy()
   }, [])
   useEffect(() => {
-    const path = routePath(page, authMode, selectedCourseId, paymentOrderId)
+    const path = page === 'admin' && window.location.pathname.startsWith('/studio/products/')
+      ? `${window.location.pathname}${window.location.search}`
+      : routePath(page, authMode, selectedCourseId, paymentOrderId)
     if (`${window.location.pathname}${window.location.search}` !== path) window.history.pushState({ infinivium: true }, '', path)
   }, [page, authMode, selectedCourseId, paymentOrderId])
   useEffect(() => {
@@ -571,10 +576,21 @@ function App() {
       return undefined
     }
 
+    const authUrlParams = new URLSearchParams(
+      `${window.location.search.slice(1)}&${window.location.hash.slice(1)}`,
+    )
+    const recoveryLinkExpired = authUrlParams.get('error_code') === 'otp_expired'
+      || /email link is invalid or has expired/i.test(authUrlParams.get('error_description') ?? '')
+    if (recoveryLinkExpired) {
+      setPage('auth')
+      setAuthMode('reset')
+      setAccountError('That password reset link has expired or already been used. Enter your email below to request a fresh link.')
+    }
+
     let active = true
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return
-      if (error) setAccountError(friendlyMessage(error, 'account'))
+      if (error && !recoveryLinkExpired) setAccountError(friendlyMessage(error, 'account'))
       setSession(data.session)
       setAuthReady(true)
     }).catch((error) => {
@@ -1129,7 +1145,7 @@ function App() {
           const isOwned = ownedProductIds.includes(product.id)
           return (
             <article className={`hero-slide${index === slide ? ' hero-slide-active' : ''}`} key={product.id} aria-hidden={index !== slide}>
-              <div className="hero-photo" style={{ backgroundImage: `url("${imageUrl(product.image, 1800)}")` }} />
+              <div className="hero-photo" style={{ backgroundImage: `url("${productImageUrl(product, 1800)}")` }} />
               <div className="hero-scrim" />
               <div className="hero-content">
                 <span className="hero-kicker"><span className="kicker-sun"><Icon name="sun" size={14} /></span> FEATURED {isEbook ? 'E-BOOK' : 'COURSE'} <span>·</span> {product.category.toUpperCase()}</span>
@@ -1211,7 +1227,7 @@ function App() {
           <section className="cart-items" aria-label="Items in your cart">
             {cartCourses.map((course) => <article className={`cart-item${selectedCart.includes(course.id) ? '' : ' not-selected'}`} key={course.id}>
               <label className="cart-checkbox"><input type="checkbox" checked={selectedCart.includes(course.id)} onChange={() => toggleCartItem(course.id)} aria-label={`Select ${course.title}`} /><span className="custom-checkbox"><Icon name="check" size={14} /></span></label>
-              <button className="cart-item-image" onClick={() => openCourse(course)}><img src={imageUrl(course.image, 320)} alt={course.imageAlt} /></button>
+              <button className="cart-item-image" onClick={() => openCourse(course)}><img src={productImageUrl(course, 320)} alt={course.coverPath ? `${course.title} cover` : course.imageAlt} /></button>
               <div className="cart-item-info"><p className="course-category">{course.type === 'ebook' ? 'E-book' : 'Course'} <span>·</span> {course.category} · {course.instructor}</p><button className="cart-item-title" onClick={() => openCourse(course)}>{course.title}</button><p className="cart-item-meta"><Icon name="book" size={14} /> {course.type === 'ebook' ? `${course.pages} pages · ${course.fileFormat} download` : `${course.hours} · ${course.lessons} lessons`}</p><button className="remove-link" onClick={() => { setCart((items) => items.filter((id) => id !== course.id)); setSelectedCart((items) => items.filter((id) => id !== course.id)) }}>Remove</button></div>
               <strong className="cart-item-price">{formatPrice(course.price)}</strong>
             </article>)}
@@ -1290,11 +1306,11 @@ function App() {
               ? 'A practical digital book to read on your own schedule. After a confirmed purchase, download the file directly from your library.'
               : 'A practical, expert-led course to follow at your own pace. After a confirmed purchase, open the private Google Drive course links from your library.'}</p>
             <div className="detail-instructor"><span className="instructor-avatar">{selectedCourse.instructor.split(' ').map((part) => part[0]).join('')}</span><span>{isEbook ? 'Author' : 'Instructor'}: <strong>{selectedCourse.instructor}</strong></span></div>
-            <div className="detail-cover"><img src={imageUrl(selectedCourse.image, 1200)} alt={selectedCourse.imageAlt} />{!isEbook && <span className="cover-play"><Icon name="play" size={21} /></span>}</div>
+            <div className="detail-cover"><img src={productImageUrl(selectedCourse, 1200)} alt={selectedCourse.coverPath ? `${selectedCourse.title} cover` : selectedCourse.imageAlt} />{!isEbook && <span className="cover-play"><Icon name="play" size={21} /></span>}</div>
             <div className="detail-stats">{isEbook ? <span><Icon name="book" size={17} /> {selectedCourse.pages} pages · {selectedCourse.fileFormat}</span> : <><span><Icon name="clock" size={17} /> {selectedCourse.hours}</span><span><Icon name="book" size={17} /> {selectedCourse.lessons} lessons</span></>}<span><Icon name="heart" size={17} /> {selectedCourse.students} {isEbook ? 'readers' : 'learners'}</span></div>
             <section className="about-class"><p className="eyebrow">{isEbook ? 'ABOUT THIS E-BOOK' : 'ABOUT THIS COURSE'}</p><h2>{isEbook ? 'A resource to return to' : 'Learn, then put it into practice'}</h2><p>{isEbook
-              ? 'Keep the ideas and exercises close at hand. Your purchase includes access to a downloadable digital copy in your student library.'
-              : 'Follow clear lessons and practical exercises designed to help you make progress. Course videos are hosted in a private Google Drive library and are opened through your student account.'}</p></section>
+              ? selectedCourse.description || 'Keep the ideas and exercises close at hand. Your purchase includes access to a downloadable digital copy in your student library.'
+              : selectedCourse.description || 'Follow clear lessons and practical exercises designed to help you make progress. Course videos are hosted in a private Google Drive library and are opened through your student account.'}</p></section>
             {!isEbook && <section className="curriculum"><p className="eyebrow">COURSE CONTENT</p><h2>What’s inside</h2>{lessons.map((item, index) => <div className="lesson-preview" key={item}><span className="lesson-number">0{index + 1}</span><span>{item}</span><span className="lesson-duration">{index + 2}:30</span></div>)}</section>}
           </section>
           <aside className="detail-sidebar"><p className="eyebrow">{isEbook ? 'E-BOOK PRICE' : 'COURSE PRICE'}</p><div className="detail-price">{formatPrice(selectedCourse.price)}</div><p className="sidebar-note">{isEbook ? 'One-time purchase · PDF download' : 'One-time purchase · Drive link access'}</p>{alreadyOwned ? <button className="button button-dark detail-cta" onClick={() => navigate('learn', selectedCourse)}><Icon name={isEbook ? 'book' : 'arrow'} size={16} /> {isEbook ? 'Open my e-book' : 'Open my course'}</button> : <div className="detail-actions"><button className="button button-outline detail-cta" onClick={() => addToCart(selectedCourse)}>Add to cart</button><button className="button button-dark detail-cta" onClick={() => buyNow(selectedCourse)}>Buy now <Icon name="arrow" size={16} /></button></div>}<p className="sidebar-includes">{isEbook ? 'Your e-book includes' : 'Your course includes'}</p><ul>{isEbook ? <><li><Icon name="check" size={16} /> {selectedCourse.pages} pages in PDF format</li><li><Icon name="check" size={16} /> Download from your library</li><li><Icon name="check" size={16} /> Read on your own device</li></> : <><li><Icon name="check" size={16} /> Course video links in Google Drive</li><li><Icon name="check" size={16} /> Access from your student library</li><li><Icon name="check" size={16} /> Learn on your own schedule</li></>}</ul></aside>
@@ -1429,7 +1445,7 @@ function App() {
               : courseLessons.length ? <div className="playlist-list">
                 {courseLessons.map((lesson, index) => (
                   <a className="playlist-lesson" href={lesson.drive_url} key={lesson.id} target="_blank" rel="noopener noreferrer">
-                    <span className="playlist-thumbnail"><img src={lesson.thumbnail_url || imageUrl(selectedCourse.image, 320)} alt="" /><span><Icon name="play" size={17} /></span></span>
+                    <span className="playlist-thumbnail"><img src={lesson.thumbnail_url || productImageUrl(selectedCourse, 320)} alt="" /><span><Icon name="play" size={17} /></span></span>
                     <span className="playlist-lesson-copy"><span className="playlist-lesson-number">LESSON {String(index + 1).padStart(2, '0')}</span><strong>{lesson.title}</strong><span>Open recording in Google Drive</span></span>
                     <Icon name="arrow" size={18} />
                   </a>
