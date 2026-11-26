@@ -1089,6 +1089,9 @@ button { border: 0; background: none; cursor: pointer; }
 }
 .studio-cover-upload img { width: 88px; height: 104px; flex: 0 0 auto; border: 1px solid #ded9e4; border-radius: 6px; background: #efedf3; object-fit: cover; }
 .studio-cover-upload.has-preview { justify-content: flex-start; }
+.studio-cover-upload.is-dragging { border-color: #7046a8; background: #f3edf9; box-shadow: 0 0 0 2px #7046a822; }
+.studio-cover-upload strong { color: #503876; font-size: 12px; }
+.studio-cover-upload span { line-height: 1.55; }
 .studio-text-button { justify-self: start; margin-top: 1px; border: 0; background: none; }
 .studio-lessons-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .studio-lessons-heading h3, .studio-review h3 { margin: 0; color: #393242; font-size: 13px; font-weight: 700; }

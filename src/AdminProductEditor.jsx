@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { createProductIdFromTitle, isValidGoogleDriveUrl, isValidHttpsImageUrl, isValidProductCoverFile, isValidProductId } from './lib/catalog.js'
 import Notice from './components/Notice.jsx'
 
@@ -20,6 +21,7 @@ function AdminProductEditor({
   onRemoveLesson,
   onAddLesson,
 }) {
+  const [coverDragging, setCoverDragging] = useState(false)
   const isEbook = draft.type === 'ebook'
   const productLabel = isEbook ? 'e-book' : 'course'
   const lessonsReady = !isEbook
@@ -153,6 +155,31 @@ function AdminProductEditor({
               <p>These details appear on the storefront.</p>
             </div>
             <div className="studio-fields-grid">
+              <div className="studio-field studio-field-wide">
+                <span>Thumbnail <b>Required to publish</b></span>
+                <label
+                  className={`studio-cover-upload${coverPreview ? ' has-preview' : ''}${coverDragging ? ' is-dragging' : ''}`}
+                  onDragOver={(event) => { event.preventDefault(); setCoverDragging(true) }}
+                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setCoverDragging(false) }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setCoverDragging(false)
+                    onCoverChange(event.dataTransfer.files?.[0] ?? null)
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => onCoverChange(event.target.files?.[0] ?? null)}
+                  />
+                  {coverPreview
+                    ? <><img src={coverPreview} alt={`Cover for ${draft.title || productLabel}`} /><span>Drop an image here or choose another image</span></>
+                    : <><strong>Upload thumbnail</strong><span>Drop an image here or choose from your device · JPEG, PNG, or WebP · up to 5 MB</span></>}
+                </label>
+                {draft.coverPath && !draft.coverFile && (
+                  <button type="button" className="studio-text-button" onClick={() => setField('coverPath', '')}>Remove current thumbnail</button>
+                )}
+              </div>
               <label className="studio-field studio-field-wide">
                 <span>{isEbook ? 'E-book title' : 'Course title'} <b>Required</b></span>
                 <input
@@ -221,22 +248,6 @@ function AdminProductEditor({
                 />
                 <small>{draft.description.length} / 600 characters</small>
               </label>
-              <div className="studio-field studio-field-wide">
-                <span>Cover image <b>Required to publish</b></span>
-                <label className={`studio-cover-upload${coverPreview ? ' has-preview' : ''}`}>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(event) => onCoverChange(event.target.files?.[0] ?? null)}
-                  />
-                  {coverPreview
-                    ? <><img src={coverPreview} alt={`Cover for ${draft.title || productLabel}`} /><span>Choose a different image</span></>
-                    : <><strong>Choose a cover image</strong><span>JPEG, PNG, or WebP · up to 5 MB</span></>}
-                </label>
-                {draft.coverPath && !draft.coverFile && (
-                  <button type="button" className="studio-text-button" onClick={() => setField('coverPath', '')}>Remove current cover</button>
-                )}
-              </div>
             </div>
           </section>
         )}

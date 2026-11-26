@@ -372,6 +372,7 @@ function App() {
   const [readerPage, setReaderPage] = useState(1)
   const [readerTheme, setReaderTheme] = useState('light')
   const [courseLessons, setCourseLessons] = useState([])
+  const [publicCourseLessonData, setPublicCourseLessonData] = useState({ courseId: '', lessons: [] })
   const [courseLessonsLoading, setCourseLessonsLoading] = useState(false)
   const [paymentOrderId, setPaymentOrderId] = useState(() => readRoute().paymentOrderId ?? '')
   const [paymentOrderStatus, setPaymentOrderStatus] = useState('')
@@ -396,6 +397,16 @@ function App() {
   const adminAccess = Boolean(session && adminCheckUserId === session.user.id && adminRole)
   const adminChecking = Boolean(session && adminCheckUserId !== session.user.id)
   const selectedCourse = products.find((course) => course.id === selectedCourseId) ?? courses[0]
+  const publicCourseLessons = publicCourseLessonData.courseId === selectedCourseId ? publicCourseLessonData.lessons : []
+  useEffect(() => {
+    if (page !== 'course' || selectedCourse.type !== 'course' || !supabase) return undefined
+    let active = true
+    supabase.rpc('get_public_course_lesson_titles', { requested_course_id: selectedCourseId })
+      .then(({ data, error }) => {
+        if (active && !error) setPublicCourseLessonData({ courseId: selectedCourseId, lessons: data ?? [] })
+      })
+    return () => { active = false }
+  }, [page, selectedCourseId, selectedCourse.type])
   const enrolledCourseIds = enrollmentUserId === session?.user.id ? owned : []
   const purchasedEbookIds = enrollmentUserId === session?.user.id ? ownedEbookIds : []
   const ownedProductIds = [...enrolledCourseIds, ...purchasedEbookIds]
@@ -1307,11 +1318,11 @@ function App() {
               : 'A practical, expert-led course to follow at your own pace. After a confirmed purchase, open the private Google Drive course links from your library.'}</p>
             <div className="detail-instructor"><span className="instructor-avatar">{selectedCourse.instructor.split(' ').map((part) => part[0]).join('')}</span><span>{isEbook ? 'Author' : 'Instructor'}: <strong>{selectedCourse.instructor}</strong></span></div>
             <div className="detail-cover"><img src={productImageUrl(selectedCourse, 1200)} alt={selectedCourse.coverPath ? `${selectedCourse.title} cover` : selectedCourse.imageAlt} />{!isEbook && <span className="cover-play"><Icon name="play" size={21} /></span>}</div>
-            <div className="detail-stats">{isEbook ? <span><Icon name="book" size={17} /> {selectedCourse.pages} pages · {selectedCourse.fileFormat}</span> : <><span><Icon name="clock" size={17} /> {selectedCourse.hours}</span><span><Icon name="book" size={17} /> {selectedCourse.lessons} lessons</span></>}<span><Icon name="heart" size={17} /> {selectedCourse.students} {isEbook ? 'readers' : 'learners'}</span></div>
+            <div className="detail-stats">{isEbook ? <span><Icon name="book" size={17} /> {selectedCourse.pages} pages · {selectedCourse.fileFormat}</span> : <><span><Icon name="clock" size={17} /> {selectedCourse.hours}</span><span><Icon name="book" size={17} /> {publicCourseLessons.length || selectedCourse.lessons} lessons</span></>}<span><Icon name="heart" size={17} /> {selectedCourse.students} {isEbook ? 'readers' : 'learners'}</span></div>
             <section className="about-class"><p className="eyebrow">{isEbook ? 'ABOUT THIS E-BOOK' : 'ABOUT THIS COURSE'}</p><h2>{isEbook ? 'A resource to return to' : 'Learn, then put it into practice'}</h2><p>{isEbook
               ? selectedCourse.description || 'Keep the ideas and exercises close at hand. Your purchase includes access to a downloadable digital copy in your student library.'
               : selectedCourse.description || 'Follow clear lessons and practical exercises designed to help you make progress. Course videos are hosted in a private Google Drive library and are opened through your student account.'}</p></section>
-            {!isEbook && <section className="curriculum"><p className="eyebrow">COURSE CONTENT</p><h2>What’s inside</h2>{lessons.map((item, index) => <div className="lesson-preview" key={item}><span className="lesson-number">0{index + 1}</span><span>{item}</span><span className="lesson-duration">{index + 2}:30</span></div>)}</section>}
+            {!isEbook && <section className="curriculum"><p className="eyebrow">COURSE CONTENT</p><h2>What’s inside</h2>{(publicCourseLessons.length ? publicCourseLessons.map((item) => item.title) : lessons).map((item, index) => <div className="lesson-preview" key={`${item}-${index}`}><span className="lesson-number">{String(index + 1).padStart(2, '0')}</span><span>{item}</span><span className="lesson-duration" /></div>)}</section>}
           </section>
           <aside className="detail-sidebar"><p className="eyebrow">{isEbook ? 'E-BOOK PRICE' : 'COURSE PRICE'}</p><div className="detail-price">{formatPrice(selectedCourse.price)}</div><p className="sidebar-note">{isEbook ? 'One-time purchase · PDF download' : 'One-time purchase · Drive link access'}</p>{alreadyOwned ? <button className="button button-dark detail-cta" onClick={() => navigate('learn', selectedCourse)}><Icon name={isEbook ? 'book' : 'arrow'} size={16} /> {isEbook ? 'Open my e-book' : 'Open my course'}</button> : <div className="detail-actions"><button className="button button-outline detail-cta" onClick={() => addToCart(selectedCourse)}>Add to cart</button><button className="button button-dark detail-cta" onClick={() => buyNow(selectedCourse)}>Buy now <Icon name="arrow" size={16} /></button></div>}<p className="sidebar-includes">{isEbook ? 'Your e-book includes' : 'Your course includes'}</p><ul>{isEbook ? <><li><Icon name="check" size={16} /> {selectedCourse.pages} pages in PDF format</li><li><Icon name="check" size={16} /> Download from your library</li><li><Icon name="check" size={16} /> Read on your own device</li></> : <><li><Icon name="check" size={16} /> Course video links in Google Drive</li><li><Icon name="check" size={16} /> Access from your student library</li><li><Icon name="check" size={16} /> Learn on your own schedule</li></>}</ul></aside>
         </div>
